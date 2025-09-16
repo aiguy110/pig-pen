@@ -230,7 +230,7 @@ fn main() -> Result<()> {
     }
 
     let num_players = strategies.len();
-    let num_games = 10000;
+    let num_games = 1_000_000;
 
     println!(
         "Running {} games with {} players...\n",
@@ -240,8 +240,17 @@ fn main() -> Result<()> {
     let mut total_stats = vec![(0u32, 0i64); num_players];
 
     for game_num in 0..num_games {
-        if game_num % 1000 == 0 {
-            println!("Running game {}...", game_num);
+        if game_num % 10_000 == 0 || game_num == num_games - 1 {
+            let progress = (game_num as f64 / num_games as f64 * 100.0) as u32;
+            let bar_width = 50;
+            let filled = (progress as usize * bar_width) / 100;
+            let bar = "=".repeat(filled) + &"-".repeat(bar_width - filled);
+            print!(
+                "\rProgress: [{bar}] {progress:3}% ({}/{} games)",
+                game_num, num_games
+            );
+            use std::io::Write;
+            std::io::stdout().flush().unwrap();
         }
 
         let results = simulate_game(&mut strategies)?;
@@ -250,15 +259,20 @@ fn main() -> Result<()> {
             total_stats[i].1 += results[i].1;
         }
     }
+    println!(); // New line after progress bar completes
 
     println!("\n=== Final Statistics after {} games ===", num_games);
     for (i, (wins, money)) in total_stats.iter().enumerate() {
+        let filename = std::path::Path::new(wasm_files[i])
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(wasm_files[i]);
         println!(
-            "Player {} ({}): {} wins, ${} net",
+            "Player {} ({}): {} wins, ${:.2} average winnings",
             i + 1,
-            wasm_files[i],
+            filename,
             wins,
-            money
+            *money as f64 / num_games as f64
         );
     }
 

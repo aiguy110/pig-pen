@@ -15,12 +15,9 @@ Each player takes turns rolling 2 dice. During a turn, a player continues until 
 **Special rule**: If a player rolls doubles, they MUST roll again.
 
 ## End Game
-- Once a player reaches a score greater than 100 and decides to stop, each other player gets one final turn to overtake the leader
-- Players who successfully overtake continue participating
-- Players who fail to overtake within one turn are sidelined with their final score
-- Each time a new leader emerges, ALL players (including those previously sidelined) get one more turn to overtake the new leader
-- Players who fail to overtake the new leader within one turn are sidelined again
-- Game ends when only one player remains (with the highest score)
+- Once a player reaches a score greater than 100 and decides to hold, each other player gets one final turn to try to overtake them
+- If a player surplants the leader, all players get another turn to try to overtake the new leader
+- Game ends when play returns to the player with highest score over 100 without any other player having exceeded that score
 
 ## Scoring
 At game end, everyone pays the winner $1 for each point behind the winner they are. Players with a score of 0 pay double.
@@ -83,18 +80,18 @@ Strategies are implemented as WASM components that:
 
 ### Building a Strategy Component
 ```bash
-cd random-strategy
+cd example-random-strategy
 cargo component build --release
 ```
 
 ### Running Simulations
 ```bash
-cargo run --release -- strategy1.wasm strategy2.wasm [...]
+cargo run --release -- ./example-random-strategy/target/wasm32-wasip1/release/random_strategy.wasm [...]
 ```
 
 The simulator will:
 1. Load the specified WASM component files
-2. Run 10,000 games
+2. Run 1,000,000 games
 3. Report statistics (games won, money won/lost) for each player
 
 ## Creating Custom Strategies
@@ -141,7 +138,7 @@ Any language with WASM component support can implement strategies by:
 - Results averaged over 10,000 games for statistical significance
 
 ## Example Strategy
-The included `random-strategy`:
+The included `example-random-strategy`:
 - Always rolls at least once per turn
 - Then has a 75% chance to continue rolling
 - Stops if score reaches 100
