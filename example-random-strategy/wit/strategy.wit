@@ -1,0 +1,18 @@
+package pig-pen:player@0.1.0;
+
+/// Interface for a Pig game strategy
+interface strategy {
+    /// Decides whether to roll the dice given the current game state
+    ///
+    /// Parameters:
+    /// - own-score: The player's current score
+    /// - other-scores: List of all other players' current scores
+    ///
+    /// Returns: true to roll, false to hold
+    should-roll: func(own-score: u32, other-scores: list<u32>) -> bool;
+}
+
+/// World defining what a player component needs to export
+world player {
+    export strategy;
+}

@@ -1,11 +1,21 @@
+use anyhow::{Context, Result};
 use rand::Rng;
+use std::env;
+use std::fs;
+use wasmtime::component::*;
+use wasmtime::{Config, Engine, Store};
+
+// Generate bindings for the WIT world
+wasmtime::component::bindgen!({
+    path: "wit",
+    world: "player",
+});
 
 #[derive(Debug, Clone)]
 struct PlayerState {
     score: u32,
     turn_start_score: u32,
     doubles_count: u32,
-    is_active: bool,
 }
 
 fn roll_dice() -> (u32, u32) {
@@ -13,15 +23,43 @@ fn roll_dice() -> (u32, u32) {
     (rng.random_range(1..=6), rng.random_range(1..=6))
 }
 
-fn simulate_turn<F>(
+struct WasmStrategy {
+    store: Store<()>,
+    player: Player,
+}
+
+impl WasmStrategy {
+    fn new(engine: &Engine, wasm_path: &str) -> Result<Self> {
+        let mut store = Store::new(&engine, ());
+
+        let wasm_bytes = fs::read(wasm_path)
+            .with_context(|| format!("Failed to read WASM file: {}", wasm_path))?;
+
+        let component = Component::from_binary(&engine, &wasm_bytes)
+            .with_context(|| format!("Failed to compile WASM component: {}", wasm_path))?;
+
+        let linker = Linker::new(&engine);
+
+        let player = Player::instantiate(&mut store, &component, &linker)
+            .with_context(|| format!("Failed to instantiate WASM component: {}", wasm_path))?;
+
+        Ok(WasmStrategy { store, player })
+    }
+
+    fn should_roll(&mut self, own_score: u32, other_scores: &[u32]) -> Result<bool> {
+        self.player
+            .pig_pen_player_strategy()
+            .call_should_roll(&mut self.store, own_score, other_scores)
+            .context("Failed to call should_roll function")
+    }
+}
+
+fn simulate_turn(
     player_state: &mut PlayerState,
     all_scores: &Vec<u32>,
     player_index: usize,
-    strategy: &F,
-) -> u32
-where
-    F: Fn(u32, Vec<u32>) -> bool,
-{
+    strategy: &mut WasmStrategy,
+) -> Result<u32> {
     player_state.turn_start_score = player_state.score;
     player_state.doubles_count = 0;
     let mut must_roll = true;
@@ -34,7 +72,7 @@ where
             .map(|(_, &s)| s)
             .collect();
 
-        if !must_roll && !strategy(player_state.score, other_scores) {
+        if !must_roll && !strategy.should_roll(player_state.score, &other_scores)? {
             break;
         }
 
@@ -79,20 +117,16 @@ where
         }
     }
 
-    player_state.score
+    Ok(player_state.score)
 }
 
-fn simulate_game<F>(strategies: &Vec<F>) -> Vec<(u32, i64)>
-where
-    F: Fn(u32, Vec<u32>) -> bool,
-{
+fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<Vec<(u32, i64)>> {
     let num_players = strategies.len();
     let mut players: Vec<PlayerState> = vec![
         PlayerState {
             score: 0,
             turn_start_score: 0,
             doubles_count: 0,
-            is_active: true,
         };
         num_players
     ];
@@ -104,23 +138,13 @@ where
     let mut players_had_final_turn = vec![false; num_players];
 
     loop {
-        if !players[current_player].is_active {
-            current_player = (current_player + 1) % num_players;
-
-            let active_count = players.iter().filter(|p| p.is_active).count();
-            if active_count <= 1 {
-                break;
-            }
-            continue;
-        }
-
         let all_scores: Vec<u32> = players.iter().map(|p| p.score).collect();
         simulate_turn(
             &mut players[current_player],
             &all_scores,
             current_player,
-            &strategies[current_player],
-        );
+            &mut strategies[current_player],
+        )?;
 
         if !endgame_started && players[current_player].score > 100 {
             endgame_started = true;
@@ -132,45 +156,25 @@ where
             players_had_final_turn[current_player] = true;
 
             if players[current_player].score > leader_score {
-                for i in 0..num_players {
-                    if i != current_player && players[i].score <= leader_score {
-                        players[i].is_active = false;
-                    }
-                }
+                // New leader emerged - reset final turn tracking for all players
                 leader_score = players[current_player].score;
                 leader_index = current_player;
                 players_had_final_turn = vec![false; num_players];
                 players_had_final_turn[current_player] = true;
-            } else if players[current_player].score <= leader_score {
-                players[current_player].is_active = false;
             }
 
-            let all_had_turn = (0..num_players)
-                .filter(|&i| players[i].is_active)
-                .all(|i| players_had_final_turn[i]);
-
+            // Check if all players have had their turn to catch the current leader
+            let all_had_turn = players_had_final_turn.iter().all(|&had_turn| had_turn);
             if all_had_turn {
-                for i in 0..num_players {
-                    if i != leader_index && players[i].is_active && players[i].score <= leader_score
-                    {
-                        players[i].is_active = false;
-                    }
-                }
+                // Game ends when everyone has had a chance to catch the current leader
+                break;
             }
         }
 
         current_player = (current_player + 1) % num_players;
-
-        let active_count = players.iter().filter(|p| p.is_active).count();
-        if active_count <= 1 {
-            break;
-        }
     }
 
-    let winner_index = players
-        .iter()
-        .position(|p| p.is_active)
-        .unwrap_or(leader_index);
+    let winner_index = leader_index;
     let winner_score = players[winner_index].score;
 
     let mut results = vec![(0u32, 0i64); num_players];
@@ -200,31 +204,38 @@ where
         }
     }
 
-    results
+    Ok(results)
 }
 
-fn random_strategy(_own_score: u32, _other_scores: Vec<u32>) -> bool {
-    static mut ROLL_COUNT: u32 = 0;
-    unsafe {
-        ROLL_COUNT += 1;
-        if ROLL_COUNT == 1 {
-            ROLL_COUNT = 0;
-            return true;
-        }
-        ROLL_COUNT = 0;
+fn main() -> Result<()> {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 {
+        eprintln!("Usage: {} <strategy1.wasm> [strategy2.wasm] ...", args[0]);
+        eprintln!("At least one WASM component file must be provided.");
+        std::process::exit(1);
     }
 
-    let mut rng = rand::rng();
-    rng.random_bool(0.75)
-}
+    let wasm_files: Vec<&str> = args[1..].iter().map(|s| s.as_str()).collect();
 
-fn main() {
-    let num_players = 4;
+    let mut config = Config::new();
+    config.wasm_component_model(true);
+    let engine = Engine::new(&config)?;
+
+    println!("Loading {} WASM component strategies...", wasm_files.len());
+    let mut strategies: Vec<WasmStrategy> = Vec::new();
+    for path in &wasm_files {
+        println!("Loading strategy from: {}", path);
+        strategies.push(WasmStrategy::new(&engine, path)?);
+    }
+
+    let num_players = strategies.len();
     let num_games = 10000;
 
-    let strategies: Vec<Box<dyn Fn(u32, Vec<u32>) -> bool>> = (0..num_players)
-        .map(|_| Box::new(random_strategy) as Box<dyn Fn(u32, Vec<u32>) -> bool>)
-        .collect();
+    println!(
+        "Running {} games with {} players...\n",
+        num_games, num_players
+    );
 
     let mut total_stats = vec![(0u32, 0i64); num_players];
 
@@ -233,7 +244,7 @@ fn main() {
             println!("Running game {}...", game_num);
         }
 
-        let results = simulate_game(&strategies);
+        let results = simulate_game(&mut strategies)?;
         for i in 0..num_players {
             total_stats[i].0 += results[i].0;
             total_stats[i].1 += results[i].1;
@@ -242,6 +253,14 @@ fn main() {
 
     println!("\n=== Final Statistics after {} games ===", num_games);
     for (i, (wins, money)) in total_stats.iter().enumerate() {
-        println!("Player {}: {} wins, ${} net", i + 1, wins, money);
+        println!(
+            "Player {} ({}): {} wins, ${} net",
+            i + 1,
+            wasm_files[i],
+            wins,
+            money
+        );
     }
+
+    Ok(())
 }

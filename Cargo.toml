@@ -4,4 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.99"
 rand = "0.9.2"
+wasmtime = { version = "36.0.2", features = ["component-model"] }
+wasmtime-wasi = "36.0.2"
+wit-bindgen = "0.46.0"
