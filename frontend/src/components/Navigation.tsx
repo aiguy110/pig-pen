@@ -25,6 +25,18 @@ export const Navigation: React.FC = () => {
               Arena
             </NavLink>
             <NavLink
+              to="/rules"
+              className={({ isActive }) =>
+                `px-4 py-2 rounded-lg font-medium transition-colors ${
+                  isActive
+                    ? "bg-indigo-600 text-white"
+                    : "text-gray-700 hover:bg-indigo-100"
+                }`
+              }
+            >
+              Rules
+            </NavLink>
+            <NavLink
               to="/docs"
               className={({ isActive }) =>
                 `px-4 py-2 rounded-lg font-medium transition-colors ${

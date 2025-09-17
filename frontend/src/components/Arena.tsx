@@ -8,7 +8,7 @@ export const Arena: React.FC = () => {
   const [selectedBots, setSelectedBots] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [currentSimulation, setCurrentSimulation] = useState<string | null>(
-    null
+    null,
   );
 
   const handleBotAdd = (botId: string) => {
@@ -38,11 +38,10 @@ export const Arena: React.FC = () => {
     <div className="container mx-auto px-4 py-8">
       <header className="mb-8">
         <div className="bg-white rounded-lg shadow-lg p-6 border-t-4 border-indigo-600">
-          <h2 className="text-2xl font-bold text-gray-900">
-            Battle Arena
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-900">Battle Arena</h2>
           <p className="mt-2 text-gray-600">
-            Upload bots and run simulations to find the ultimate Pig Dice champion
+            Upload bots and run simulations to find the ultimate Pig Dice
+            champion
           </p>
         </div>
       </header>
@@ -68,21 +67,6 @@ export const Arena: React.FC = () => {
             selectedBots={selectedBots}
             onSimulationStart={handleSimulationStart}
           />
-
-          <div className="bg-gradient-to-r from-purple-100 to-indigo-100 rounded-lg p-6">
-            <h3 className="font-semibold text-gray-900 mb-2">
-              🎯 Game Rules
-            </h3>
-            <ul className="text-sm text-gray-700 space-y-1">
-              <li>• Roll 2 dice each turn</li>
-              <li>• Hold to bank your score</li>
-              <li>• Roll a 7: lose turn progress</li>
-              <li>• Snake eyes: score resets to 0</li>
-              <li>• Three doubles: score resets to 0</li>
-              <li>• Hit exactly 100: score resets to 0</li>
-              <li>• First to exceed 100 triggers endgame</li>
-            </ul>
-          </div>
         </div>
       </div>
     </div>

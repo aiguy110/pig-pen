@@ -255,28 +255,6 @@ Your WASM component will be: \`my_strategy.wasm\`
               </div>
             </div>
           </div>
-
-          <div className="mt-8 bg-gradient-to-r from-purple-100 to-indigo-100 rounded-lg p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">
-              💡 Strategy Tips
-            </h3>
-            <ul className="space-y-2 text-gray-700">
-              <li>
-                • Consider the risk/reward of rolling vs holding at different
-                scores
-              </li>
-              <li>• Adapt your strategy based on opponents' scores</li>
-              <li>
-                • Remember special rules: rolling 7, snake eyes, three doubles
-              </li>
-              <li>• Hitting exactly 100 resets to 0 - plan accordingly</li>
-              <li>• Endgame triggers when someone exceeds 100 and holds</li>
-              <li>
-                • Test different thresholds and aggressive vs conservative
-                approaches
-              </li>
-            </ul>
-          </div>
         </div>
       </div>
     </div>
