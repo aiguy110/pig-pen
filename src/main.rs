@@ -1,236 +1,122 @@
-use anyhow::{Context, Result};
-use rand::Rng;
-use std::env;
-use std::fs;
-use wasmtime::component::*;
-use wasmtime::{Config, Engine, Store};
+use anyhow::Result;
+use axum::Router;
+use clap::{Parser, Subcommand};
+use pig_pen::{api, db, game, simulation::SimulationManager};
+use std::{path::PathBuf, sync::Arc};
+use tokio::{fs, net::TcpListener, sync::RwLock};
+use tower_http::{cors::CorsLayer, services::ServeDir};
 
-// Generate bindings for the WIT world
-wasmtime::component::bindgen!({
-    path: "wit",
-    world: "player",
-});
+#[derive(Parser)]
+#[command(name = "pig-pen")]
+#[command(about = "A competitive AI dice game simulator")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
 
-#[derive(Debug, Clone)]
-struct PlayerState {
-    score: u32,
-    turn_start_score: u32,
-    doubles_count: u32,
+    /// Port to run the web server on
+    #[arg(short, long, default_value = "8080")]
+    port: u16,
 }
 
-fn roll_dice() -> (u32, u32) {
-    let mut rng = rand::rng();
-    (rng.random_range(1..=6), rng.random_range(1..=6))
+#[derive(Subcommand)]
+enum Commands {
+    /// Run simulation with WASM strategies
+    Simulate {
+        /// WASM strategy files to load
+        #[arg(required = true)]
+        strategies: Vec<PathBuf>,
+
+        /// Number of games to simulate
+        #[arg(short = 'n', long, default_value = "1000000")]
+        games: usize,
+    },
 }
 
-struct WasmStrategy {
-    store: Store<()>,
-    player: Player,
+#[tokio::main]
+async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    // If simulate command is used, run CLI mode
+    if let Some(Commands::Simulate { strategies, games }) = cli.command {
+        return run_cli_mode(strategies, games).await;
+    }
+
+    // Web server mode
+    println!("Starting Pig Pen web server...");
+
+    // Create bots directory if it doesn't exist
+    let bots_dir = PathBuf::from("bots");
+    fs::create_dir_all(&bots_dir).await?;
+
+    // Initialize database
+    let pool = db::create_pool().await?;
+
+    // Create WASM engine
+    let engine = Arc::new(game::create_engine()?);
+
+    // Create simulation manager
+    let simulation_manager = Arc::new(RwLock::new(SimulationManager::new(
+        pool.clone(),
+        engine.clone(),
+    )));
+
+    // Start background task to process simulation queue
+    let manager_clone = simulation_manager.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            let mut manager = manager_clone.write().await;
+            manager.check_and_start_next().await;
+        }
+    });
+
+    // Create app state
+    let state = api::AppState {
+        pool,
+        engine,
+        bots_dir,
+        simulation_manager,
+    };
+
+    // Create router with static file serving
+    // API routes are registered first under /api prefix and take precedence
+    // All other routes fall back to serving static files from frontend/build
+    let api_routes = api::create_router(state);
+
+    let app = Router::new()
+        .nest("/api", api_routes)
+        .fallback_service(ServeDir::new("frontend/build"))
+        .layer(CorsLayer::permissive());
+
+    // Start server
+    let addr = format!("0.0.0.0:{}", cli.port);
+    let listener = TcpListener::bind(&addr).await?;
+    println!("Server running on http://{}", addr);
+    println!("Serving static files from frontend/build/");
+
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }
 
-impl WasmStrategy {
-    fn new(engine: &Engine, wasm_path: &str) -> Result<Self> {
-        let mut store = Store::new(&engine, ());
+// CLI mode for simulations
+async fn run_cli_mode(strategy_files: Vec<PathBuf>, num_games: usize) -> Result<()> {
+    let engine = game::create_engine()?;
 
-        let wasm_bytes = fs::read(wasm_path)
-            .with_context(|| format!("Failed to read WASM file: {}", wasm_path))?;
-
-        let component = Component::from_binary(&engine, &wasm_bytes)
-            .with_context(|| format!("Failed to compile WASM component: {}", wasm_path))?;
-
-        let linker = Linker::new(&engine);
-
-        let player = Player::instantiate(&mut store, &component, &linker)
-            .with_context(|| format!("Failed to instantiate WASM component: {}", wasm_path))?;
-
-        Ok(WasmStrategy { store, player })
-    }
-
-    fn should_roll(&mut self, own_score: u32, other_scores: &[u32]) -> Result<bool> {
-        self.player
-            .pig_pen_player_strategy()
-            .call_should_roll(&mut self.store, own_score, other_scores)
-            .context("Failed to call should_roll function")
-    }
-}
-
-fn simulate_turn(
-    player_state: &mut PlayerState,
-    all_scores: &Vec<u32>,
-    player_index: usize,
-    strategy: &mut WasmStrategy,
-) -> Result<u32> {
-    player_state.turn_start_score = player_state.score;
-    player_state.doubles_count = 0;
-    let mut must_roll = true;
-
-    loop {
-        let other_scores: Vec<u32> = all_scores
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| *i != player_index)
-            .map(|(_, &s)| s)
-            .collect();
-
-        if !must_roll && !strategy.should_roll(player_state.score, &other_scores)? {
-            break;
-        }
-
-        let (die1, die2) = roll_dice();
-        let sum = die1 + die2;
-
-        if die1 == 1 && die2 == 1 {
-            player_state.score = 0;
-            player_state.doubles_count = 0;
-            break;
-        }
-
-        if sum == 7 {
-            player_state.score = player_state.turn_start_score;
-            player_state.doubles_count = 0;
-            break;
-        }
-
-        if die1 == die2 {
-            player_state.doubles_count += 1;
-            if player_state.doubles_count >= 3 {
-                player_state.score = 0;
-                player_state.doubles_count = 0;
-                break;
-            }
-            must_roll = true;
-        } else {
-            player_state.doubles_count = 0;
-            must_roll = false;
-        }
-
-        player_state.score += sum;
-
-        if player_state.score == 100 {
-            player_state.score = 0;
-            player_state.doubles_count = 0;
-            break;
-        }
-
-        if player_state.score > 100 {
-            break;
-        }
-    }
-
-    Ok(player_state.score)
-}
-
-fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<Vec<(u32, i64)>> {
-    let num_players = strategies.len();
-    let mut players: Vec<PlayerState> = vec![
-        PlayerState {
-            score: 0,
-            turn_start_score: 0,
-            doubles_count: 0,
-        };
-        num_players
-    ];
-
-    let mut current_player = 0;
-    let mut leader_score = 0;
-    let mut leader_index = 0;
-    let mut endgame_started = false;
-    let mut players_had_final_turn = vec![false; num_players];
-
-    loop {
-        let all_scores: Vec<u32> = players.iter().map(|p| p.score).collect();
-        simulate_turn(
-            &mut players[current_player],
-            &all_scores,
-            current_player,
-            &mut strategies[current_player],
-        )?;
-
-        if !endgame_started && players[current_player].score > 100 {
-            endgame_started = true;
-            leader_score = players[current_player].score;
-            leader_index = current_player;
-            players_had_final_turn = vec![false; num_players];
-            players_had_final_turn[current_player] = true;
-        } else if endgame_started {
-            players_had_final_turn[current_player] = true;
-
-            if players[current_player].score > leader_score {
-                // New leader emerged - reset final turn tracking for all players
-                leader_score = players[current_player].score;
-                leader_index = current_player;
-                players_had_final_turn = vec![false; num_players];
-                players_had_final_turn[current_player] = true;
-            }
-
-            // Check if all players have had their turn to catch the current leader
-            let all_had_turn = players_had_final_turn.iter().all(|&had_turn| had_turn);
-            if all_had_turn {
-                // Game ends when everyone has had a chance to catch the current leader
-                break;
-            }
-        }
-
-        current_player = (current_player + 1) % num_players;
-    }
-
-    let winner_index = leader_index;
-    let winner_score = players[winner_index].score;
-
-    let mut results = vec![(0u32, 0i64); num_players];
-    results[winner_index].0 = 1;
-
-    for i in 0..num_players {
-        if i == winner_index {
-            for j in 0..num_players {
-                if j != i {
-                    let diff = winner_score - players[j].score;
-                    let payment = if players[j].score == 0 {
-                        (diff * 2) as i64
-                    } else {
-                        diff as i64
-                    };
-                    results[i].1 += payment;
-                }
-            }
-        } else {
-            let diff = winner_score - players[i].score;
-            let payment = if players[i].score == 0 {
-                (diff * 2) as i64
-            } else {
-                diff as i64
-            };
-            results[i].1 -= payment;
-        }
-    }
-
-    Ok(results)
-}
-
-fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() < 2 {
-        eprintln!("Usage: {} <strategy1.wasm> [strategy2.wasm] ...", args[0]);
-        eprintln!("At least one WASM component file must be provided.");
-        std::process::exit(1);
-    }
-
-    let wasm_files: Vec<&str> = args[1..].iter().map(|s| s.as_str()).collect();
-
-    let mut config = Config::new();
-    config.wasm_component_model(true);
-    let engine = Engine::new(&config)?;
-
-    println!("Loading {} WASM component strategies...", wasm_files.len());
-    let mut strategies: Vec<WasmStrategy> = Vec::new();
-    for path in &wasm_files {
-        println!("Loading strategy from: {}", path);
-        strategies.push(WasmStrategy::new(&engine, path)?);
+    println!(
+        "Loading {} WASM component strategies...",
+        strategy_files.len()
+    );
+    let mut strategies: Vec<game::WasmStrategy> = Vec::new();
+    for path in &strategy_files {
+        println!("Loading strategy from: {}", path.display());
+        strategies.push(game::WasmStrategy::from_file(
+            &engine,
+            path.to_str().unwrap(),
+        )?);
     }
 
     let num_players = strategies.len();
-    let num_games = 1_000_000;
 
     println!(
         "Running {} games with {} players...\n",
@@ -253,20 +139,20 @@ fn main() -> Result<()> {
             std::io::stdout().flush().unwrap();
         }
 
-        let results = simulate_game(&mut strategies)?;
+        let results = game::simulate_game(&mut strategies)?;
         for i in 0..num_players {
             total_stats[i].0 += results[i].0;
             total_stats[i].1 += results[i].1;
         }
     }
-    println!(); // New line after progress bar completes
+    println!();
 
     println!("\n=== Final Statistics after {} games ===", num_games);
     for (i, (wins, money)) in total_stats.iter().enumerate() {
-        let filename = std::path::Path::new(wasm_files[i])
+        let filename = strategy_files[i]
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or(wasm_files[i]);
+            .unwrap_or("unknown");
         println!(
             "Player {} ({}): {} wins, ${:.2} average winnings",
             i + 1,

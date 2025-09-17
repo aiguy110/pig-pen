@@ -149,3 +149,333 @@ The included `example-random-strategy`:
 - Real-time visualization of games
 - Strategy performance analytics
 - Support for strategies with memory/learning
+
+---
+
+# Web API Documentation
+
+The Pig-Pen project now includes a web server with REST API endpoints for uploading bots, running simulations, and retrieving results.
+
+## Starting the Web Server
+
+```bash
+cargo run --release
+```
+
+The server will start on `http://0.0.0.0:8080`. The CLI mode is still available by passing WASM files as arguments.
+
+## API Endpoints
+
+### Upload Bot
+**POST** `/api/bots`
+
+Upload a new bot WASM component.
+
+**Request:** `multipart/form-data`
+- `name` (text, required): Name of the bot
+- `description` (text, optional): Description of the bot
+- `wasm` (binary, required): WASM component file
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "message": "Bot uploaded successfully"
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/bots \
+  -F "name=My Strategy" \
+  -F "description=A smart strategy" \
+  -F "wasm=@strategy.wasm"
+```
+
+### List Bots
+**GET** `/api/bots`
+
+Get a list of all uploaded bots.
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "name": "Bot Name",
+    "description": "Bot description",
+    "created_at": "2025-01-01T00:00:00"
+  }
+]
+```
+
+**Example:**
+```bash
+curl http://localhost:8080/api/bots
+```
+
+### Start Simulation
+**POST** `/api/simulations`
+
+Start a new simulation between selected bots.
+
+**Request:**
+```json
+{
+  "bot_ids": ["bot-id-1", "bot-id-2"],
+  "num_games": 10000
+}
+```
+
+**Response:**
+```json
+{
+  "simulation_id": "uuid",
+  "message": "Simulation queued successfully"
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/simulations \
+  -H "Content-Type: application/json" \
+  -d '{"bot_ids": ["id1", "id2"], "num_games": 10000}'
+```
+
+### Get Simulation Status
+**GET** `/api/simulations/:id`
+
+Check the status of a simulation.
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "status": "pending|running|completed|failed",
+  "num_games": 10000,
+  "created_at": "2025-01-01T00:00:00",
+  "started_at": "2025-01-01T00:00:01",
+  "completed_at": "2025-01-01T00:00:10",
+  "error_message": null
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:8080/api/simulations/simulation-id
+```
+
+### Get Simulation Results
+**GET** `/api/simulations/:id/results`
+
+Get detailed results of a completed simulation.
+
+**Response:**
+```json
+{
+  "simulation_id": "uuid",
+  "status": "completed",
+  "num_games": 10000,
+  "results": [
+    {
+      "bot_id": "uuid",
+      "bot_name": "Bot Name",
+      "player_index": 0,
+      "games_won": 3500,
+      "total_money": 25000,
+      "average_money_per_game": 2.5
+    }
+  ],
+  "completed_at": "2025-01-01T00:00:10"
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:8080/api/simulations/simulation-id/results
+```
+
+## Data Persistence
+
+- Bots are stored in the `bots/` directory with their metadata in SQLite
+- Duplicate bots (same WASM hash) are detected and not re-uploaded
+- Simulation results are persisted in the database
+- The database file is `pig-pen.db` in the project root
+
+## Notes
+
+- No authentication is required for any endpoint
+- CORS is enabled for all origins
+- Maximum of 1,000,000 games per simulation
+- Simulations run asynchronously in the background
+- The server processes one simulation at a time
+
+---
+
+# Frontend Documentation
+
+## Overview
+A React TypeScript application that provides a web interface for the Pig-Pen game simulator. The frontend allows users to upload bot strategies, run simulations, and view results.
+
+## Tech Stack
+- React 19 with TypeScript
+- Tailwind CSS v3 for styling
+- Axios for API communication
+- Heroicons for UI icons
+- Create React App as the build tool
+
+## Project Structure
+
+```
+frontend/
+├── src/
+│   ├── components/          # React components
+│   │   ├── BotUpload.tsx   # Bot upload form
+│   │   ├── BotList.tsx     # Display and select bots
+│   │   ├── SimulationControl.tsx  # Configure and start simulations
+│   │   └── SimulationMonitor.tsx  # Track simulation progress and results
+│   ├── services/
+│   │   └── api.ts          # API client and TypeScript interfaces
+│   ├── App.tsx             # Main application component
+│   └── index.css          # Global styles with Tailwind directives
+├── public/                 # Static assets
+├── tailwind.config.js     # Tailwind CSS configuration
+└── package.json           # Dependencies and scripts
+```
+
+## Key Features
+
+### Bot Management
+- **Upload**: Drag-and-drop or file selection for WASM bot uploads
+- **List View**: Display all uploaded bots with metadata
+- **Selection**: Multi-select interface for choosing bots for simulations
+
+### Simulation Control
+- Configure number of games (1 to 1,000,000)
+- Start simulations with selected bots
+- Real-time validation and error handling
+
+### Live Monitoring
+- Status updates (pending, running, completed, failed)
+- Progress tracking with timestamps
+- Auto-refresh every 2 seconds during active simulations
+
+### Results Display
+- Detailed statistics table with:
+  - Games won and win rate percentage
+  - Total money won/lost
+  - Average money per game
+- Winner highlighting
+- Sortable by performance metrics
+
+## UI Components
+
+### BotUpload
+- Form validation for required fields
+- File type restriction to .wasm files
+- Success/error messaging
+- Auto-refresh bot list on successful upload
+
+### BotList
+- Card-based layout for each bot
+- Visual selection state with color coding
+- Creation timestamp display
+- Empty state messaging
+
+### SimulationControl
+- Number input with min/max validation
+- Disabled state when insufficient bots selected
+- Clear feedback on selection requirements
+
+### SimulationMonitor
+- Color-coded status badges
+- Animated loading states
+- Comprehensive results table
+- Error message display
+
+## API Integration
+
+### Service Layer (`services/api.ts`)
+- Centralized API configuration
+- TypeScript interfaces for all data types
+- Async/await pattern for all requests
+- Error handling with axios interceptors
+
+### Endpoints Used
+- `POST /api/bots` - Upload new bots
+- `GET /api/bots` - List all bots
+- `POST /api/simulations` - Start simulations
+- `GET /api/simulations/:id` - Check simulation status
+- `GET /api/simulations/:id/results` - Get simulation results
+
+## Styling
+
+### Design System
+- **Colors**: Indigo/purple gradient theme
+- **Typography**: System font stack
+- **Spacing**: Consistent 4px grid system
+- **Shadows**: Layered depth for cards
+- **Animations**: Pulse for loading states
+
+### Responsive Design
+- Mobile-first approach
+- Grid system adapts from 1 to 3 columns
+- Touch-friendly interaction targets
+- Readable font sizes across devices
+
+## Running the Frontend
+
+### Development Mode
+```bash
+cd frontend
+npm install
+npm start
+```
+Opens on http://localhost:3000 with hot reload
+
+### Production Build
+```bash
+cd frontend
+npm run build
+```
+Creates optimized bundle in `frontend/build/`
+
+### Configuration
+- Proxy configured in package.json to forward API calls to backend
+- CORS handled by backend server
+- No environment variables required for default setup
+
+## Development Notes
+
+### State Management
+- Local component state with React hooks
+- Lifting state up for shared data (selected bots, current simulation)
+- No external state management library needed
+
+### Performance Optimizations
+- Conditional rendering to reduce re-renders
+- Debounced API calls where appropriate
+- Lazy loading for large result sets
+- Memoization for expensive computations
+
+### Error Handling
+- Try-catch blocks for all async operations
+- User-friendly error messages
+- Graceful fallbacks for network failures
+- Form validation before submission
+
+## Future Enhancements
+
+### Planned Features
+- Bot performance history graphs
+- Tournament bracket visualization
+- Real-time game playback
+- Bot code editor with syntax highlighting
+- Leaderboard system
+
+### Technical Improvements
+- WebSocket for real-time updates
+- Service worker for offline support
+- Code splitting for faster initial load
+- Integration tests with React Testing Library
+- Accessibility improvements (ARIA labels, keyboard navigation)
