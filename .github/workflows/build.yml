@@ -1,0 +1,163 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary_name: pig-pen
+            artifact_name: pig-pen-linux-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: pig-pen.exe
+            artifact_name: pig-pen-windows-x64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary_name: pig-pen
+            artifact_name: pig-pen-macos-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # Setup Rust
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}
+        override: true
+
+    # Setup Node.js for frontend build
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    # Cache Rust dependencies
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    # Build frontend
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: npm ci
+
+    - name: Build frontend
+      working-directory: frontend
+      run: npm run build
+
+    # Build Rust backend
+    - name: Build backend
+      run: cargo build --release --target ${{ matrix.target }}
+
+    # Prepare artifacts directory
+    - name: Prepare artifacts
+      shell: bash
+      run: |
+        mkdir -p artifacts/frontend
+        cp -r frontend/build/* artifacts/frontend/
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} artifacts/
+        else
+          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} artifacts/
+          chmod +x artifacts/${{ matrix.binary_name }}
+        fi
+
+        # Copy essential files
+        cp README.md artifacts/ || true
+        cp LICENSE artifacts/ || true
+
+        # Create wit directory and copy interface files
+        mkdir -p artifacts/wit
+        cp -r wit/* artifacts/wit/ || true
+
+        # Create example strategy directory
+        mkdir -p artifacts/example-random-strategy
+        cp -r example-random-strategy/* artifacts/example-random-strategy/ || true
+
+    # Upload artifacts
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: artifacts/
+        retention-days: 7
+
+  # Create release when pushing tags
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # Download all artifacts
+    - name: Download Linux artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: pig-pen-linux-x64
+        path: ./artifacts/linux
+
+    - name: Download Windows artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: pig-pen-windows-x64
+        path: ./artifacts/windows
+
+    - name: Download macOS artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: pig-pen-macos-x64
+        path: ./artifacts/macos
+
+    # Create archives
+    - name: Create release archives
+      run: |
+        cd artifacts
+        tar -czf ../pig-pen-linux-x64.tar.gz -C linux .
+        zip -r ../pig-pen-windows-x64.zip windows/*
+        tar -czf ../pig-pen-macos-x64.tar.gz -C macos .
+
+    # Create GitHub release
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          pig-pen-linux-x64.tar.gz
+          pig-pen-windows-x64.zip
+          pig-pen-macos-x64.tar.gz
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
