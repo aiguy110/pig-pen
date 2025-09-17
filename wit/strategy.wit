@@ -1,15 +1,34 @@
 package pig-pen:player@0.1.0;
 
+/// Represents a single dice roll as a tuple of two u32 values
+type roll = tuple<u32, u32>;
+
+/// Game state information passed to strategy functions
+record game-state {
+    /// The player's current banked score (locked in from previous turns)
+    current-banked-score: u32,
+    
+    /// The player's current total score (banked + current turn points)
+    current-total-score: u32,
+    
+    /// List of all other players' banked scores
+    other-player-banked-scores: list<u32>,
+    
+    /// Complete turn history as (player-index, roll) pairs
+    /// player-index indicates which player made the roll
+    /// roll is a tuple of the two dice values
+    turn-history: list<tuple<u32, roll>>,
+}
+
 /// Interface for a Pig game strategy
 interface strategy {
     /// Decides whether to roll the dice given the current game state
     ///
     /// Parameters:
-    /// - own-score: The player's current score
-    /// - other-scores: List of all other players' current scores
+    /// - state: Complete game state information
     ///
     /// Returns: true to roll, false to hold
-    should-roll: func(own-score: u32, other-scores: list<u32>) -> bool;
+    should-roll: func(state: game-state) -> bool;
 }
 
 /// World defining what a player component needs to export
