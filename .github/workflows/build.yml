@@ -107,23 +107,8 @@ jobs:
           name: pig-pen-linux-x64
           path: ./artifacts/linux
 
-      # Create archives
-      - name: Create release archives
-        run: |
-          cd artifacts/linux
-          tar -czf ../../pig-pen-linux-x64.tar.gz .
-          cd ../..
-          zip -r pig-pen-linux-x64.zip artifacts/linux/*
-
       # Create GitHub release
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            pig-pen-linux-x64.tar.gz
-            pig-pen-linux-x64.zip
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: artifacts/linux/*
