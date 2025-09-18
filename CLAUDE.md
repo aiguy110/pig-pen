@@ -324,6 +324,34 @@ Get detailed results of a completed simulation.
 curl http://localhost:8080/api/simulations/simulation-id/results
 ```
 
+### List All Simulations (History)
+**GET** `/api/simulations`
+
+Get a list of all simulations with summary information.
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "status": "completed",
+    "num_games": 10000,
+    "participant_count": 4,
+    "winner_name": "Smart Bot",
+    "winner_games_won": 3500,
+    "created_at": "2025-01-01T00:00:00",
+    "started_at": "2025-01-01T00:00:01",
+    "completed_at": "2025-01-01T00:00:10",
+    "error_message": null
+  }
+]
+```
+
+**Example:**
+```bash
+curl http://localhost:8080/api/simulations
+```
+
 ## Data Persistence
 
 - Bots are stored in the `bots/` directory with their metadata in SQLite
@@ -362,10 +390,15 @@ frontend/
 │   │   ├── BotUpload.tsx   # Bot upload form
 │   │   ├── BotList.tsx     # Display and select bots
 │   │   ├── SimulationControl.tsx  # Configure and start simulations
-│   │   └── SimulationMonitor.tsx  # Track simulation progress and results
+│   │   ├── SimulationMonitor.tsx  # Track simulation progress and results
+│   │   ├── SimulationHistory.tsx  # View all simulations history
+│   │   ├── Navigation.tsx  # Main navigation bar
+│   │   ├── Arena.tsx       # Main arena page
+│   │   ├── Rules.tsx       # Game rules page
+│   │   └── BotDocumentation.tsx  # Bot building documentation
 │   ├── services/
 │   │   └── api.ts          # API client and TypeScript interfaces
-│   ├── App.tsx             # Main application component
+│   ├── App.tsx             # Main application component with routing
 │   └── index.css          # Global styles with Tailwind directives
 ├── public/                 # Static assets
 ├── tailwind.config.js     # Tailwind CSS configuration
@@ -397,6 +430,17 @@ frontend/
 - Winner highlighting
 - Sortable by performance metrics
 
+### Simulation History
+- View all past and current simulations
+- Summary information including:
+  - Status with color-coded badges
+  - Number of participants and games
+  - Winner information for completed simulations
+  - Duration tracking
+- Quick navigation to detailed results
+- Auto-refresh every 5 seconds
+- Sortable by date (newest first)
+
 ## UI Components
 
 ### BotUpload
@@ -421,6 +465,14 @@ frontend/
 - Animated loading states
 - Comprehensive results table
 - Error message display
+
+### SimulationHistory
+- Tabular view of all simulations
+- Real-time status updates with icons
+- Winner display with trophy icon
+- Duration calculation and display
+- Quick links to view results or monitor active simulations
+- Empty state messaging for new users
 
 ## API Integration
 

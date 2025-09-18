@@ -48,6 +48,18 @@ export const Navigation: React.FC = () => {
             >
               Build a Bot
             </NavLink>
+            <NavLink
+              to="/history"
+              className={({ isActive }) =>
+                `px-4 py-2 rounded-lg font-medium transition-colors ${
+                  isActive
+                    ? "bg-indigo-600 text-white"
+                    : "text-gray-700 hover:bg-indigo-100"
+                }`
+              }
+            >
+              History
+            </NavLink>
           </div>
         </div>
       </div>

@@ -79,10 +79,43 @@ struct ParticipantResult {
     average_money_per_game: f64,
 }
 
+#[derive(Serialize)]
+struct SimulationHistoryItem {
+    id: String,
+    status: String,
+    num_games: i32,
+    participant_count: i64,
+    winner_name: Option<String>,
+    winner_games_won: Option<i32>,
+    created_at: String,
+    started_at: Option<String>,
+    completed_at: Option<String>,
+    error_message: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct SimulationWithParticipantCount {
+    id: String,
+    status: String,
+    num_games: i32,
+    created_at: String,
+    started_at: Option<String>,
+    completed_at: Option<String>,
+    error_message: Option<String>,
+    participant_count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct WinnerInfo {
+    bot_name: String,
+    games_won: i32,
+    total_money: i64,
+}
+
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/bots", post(upload_bot).get(list_bots))
-        .route("/simulations", post(start_simulation))
+        .route("/simulations", post(start_simulation).get(list_simulations))
         .route("/simulations/:id", get(get_simulation_status))
         .route("/simulations/:id/results", get(get_simulation_results))
         .with_state(state)
@@ -249,6 +282,74 @@ async fn start_simulation(
         simulation_id,
         message: "Simulation queued successfully".to_string(),
     }))
+}
+
+async fn list_simulations(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<SimulationHistoryItem>>, StatusCode> {
+    // Query all simulations with participant count
+    let simulations = sqlx::query_as::<_, SimulationWithParticipantCount>(
+        r#"
+        SELECT
+            s.id,
+            s.status,
+            s.num_games,
+            s.created_at,
+            s.started_at,
+            s.completed_at,
+            s.error_message,
+            COUNT(sp.bot_id) as participant_count
+        FROM simulations s
+        LEFT JOIN simulation_participants sp ON s.id = sp.simulation_id
+        GROUP BY s.id
+        ORDER BY s.created_at DESC
+        "#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut history_items = Vec::new();
+
+    for sim in simulations {
+        // Get winner info if simulation is completed
+        let winner_info = if sim.status == "completed" {
+            sqlx::query_as::<_, WinnerInfo>(
+                r#"
+                SELECT
+                    b.name as bot_name,
+                    sp.games_won,
+                    sp.total_money
+                FROM simulation_participants sp
+                JOIN bots b ON sp.bot_id = b.id
+                WHERE sp.simulation_id = ?
+                ORDER BY sp.games_won DESC, sp.total_money DESC
+                LIMIT 1
+                "#,
+            )
+            .bind(&sim.id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        } else {
+            None
+        };
+
+        history_items.push(SimulationHistoryItem {
+            id: sim.id,
+            status: sim.status,
+            num_games: sim.num_games,
+            participant_count: sim.participant_count,
+            winner_name: winner_info.as_ref().map(|w| w.bot_name.clone()),
+            winner_games_won: winner_info.as_ref().map(|w| w.games_won),
+            created_at: sim.created_at,
+            started_at: sim.started_at,
+            completed_at: sim.completed_at,
+            error_message: sim.error_message,
+        });
+    }
+
+    Ok(Json(history_items))
 }
 
 async fn get_simulation_status(

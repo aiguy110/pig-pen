@@ -1,12 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { ChartBarIcon, ClockIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
-import { simulationService, Simulation, SimulationResults } from '../services/api';
+import React, { useState, useEffect } from "react";
+import {
+  ChartBarIcon,
+  ClockIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+} from "@heroicons/react/24/outline";
+import {
+  simulationService,
+  Simulation,
+  SimulationResults,
+} from "../services/api";
 
 interface SimulationMonitorProps {
   simulationId: string | null;
 }
 
-export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({ simulationId }) => {
+export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({
+  simulationId,
+}) => {
   const [simulation, setSimulation] = useState<Simulation | null>(null);
   const [results, setResults] = useState<SimulationResults | null>(null);
   const [loading, setLoading] = useState(false);
@@ -21,15 +32,17 @@ export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({ simulation
     const fetchStatus = async () => {
       try {
         setLoading(true);
-        const status = await simulationService.getSimulationStatus(simulationId);
+        const status =
+          await simulationService.getSimulationStatus(simulationId);
         setSimulation(status);
 
-        if (status.status === 'completed') {
-          const simResults = await simulationService.getSimulationResults(simulationId);
+        if (status.status === "completed") {
+          const simResults =
+            await simulationService.getSimulationResults(simulationId);
           setResults(simResults);
         }
       } catch (err) {
-        console.error('Failed to fetch simulation status:', err);
+        console.error("Failed to fetch simulation status:", err);
       } finally {
         setLoading(false);
       }
@@ -38,7 +51,10 @@ export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({ simulation
     fetchStatus();
 
     const interval = setInterval(() => {
-      if (simulation?.status === 'pending' || simulation?.status === 'running') {
+      if (
+        simulation?.status === "pending" ||
+        simulation?.status === "running"
+      ) {
         fetchStatus();
       }
     }, 2000);
@@ -67,37 +83,42 @@ export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({ simulation
 
   const getStatusIcon = () => {
     switch (simulation.status) {
-      case 'pending':
-      case 'running':
+      case "pending":
+      case "running":
         return <ClockIcon className="h-5 w-5 text-yellow-500 animate-pulse" />;
-      case 'completed':
+      case "completed":
         return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
-      case 'failed':
+      case "failed":
         return <XCircleIcon className="h-5 w-5 text-red-500" />;
     }
   };
 
   const getStatusColor = () => {
     switch (simulation.status) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'running':
-        return 'bg-blue-100 text-blue-800';
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'failed':
-        return 'bg-red-100 text-red-800';
+      case "pending":
+        return "bg-yellow-100 text-yellow-800";
+      case "running":
+        return "bg-blue-100 text-blue-800";
+      case "completed":
+        return "bg-green-100 text-green-800";
+      case "failed":
+        return "bg-red-100 text-red-800";
     }
   };
 
   return (
     <div className="bg-white shadow rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">Simulation Status</h2>
+        <h2 className="text-lg font-semibold text-gray-900">
+          Simulation Status
+        </h2>
         <div className="flex items-center">
           {getStatusIcon()}
-          <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor()}`}>
-            {simulation.status.charAt(0).toUpperCase() + simulation.status.slice(1)}
+          <span
+            className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor()}`}
+          >
+            {simulation.status.charAt(0).toUpperCase() +
+              simulation.status.slice(1)}
           </span>
         </div>
       </div>
@@ -105,7 +126,9 @@ export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({ simulation
       <div className="space-y-3">
         <div className="text-sm">
           <span className="text-gray-500">Games:</span>
-          <span className="ml-2 font-medium text-gray-900">{simulation.num_games.toLocaleString()}</span>
+          <span className="ml-2 font-medium text-gray-900">
+            {simulation.num_games.toLocaleString()}
+          </span>
         </div>
 
         <div className="text-sm">
@@ -170,9 +193,12 @@ export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({ simulation
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {results.results
-                  .sort((a, b) => b.games_won - a.games_won)
+                  .sort((a, b) => b.total_money - a.total_money)
                   .map((result, index) => (
-                    <tr key={result.bot_id} className={index === 0 ? 'bg-yellow-50' : ''}>
+                    <tr
+                      key={result.bot_id}
+                      className={index === 0 ? "bg-yellow-50" : ""}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {result.bot_name}
                         {index === 0 && (
@@ -185,7 +211,10 @@ export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({ simulation
                         {result.games_won.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {((result.games_won / results.num_games) * 100).toFixed(1)}%
+                        {((result.games_won / results.num_games) * 100).toFixed(
+                          1,
+                        )}
+                        %
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         ${result.total_money.toLocaleString()}

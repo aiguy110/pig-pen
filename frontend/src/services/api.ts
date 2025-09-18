@@ -30,6 +30,19 @@ export interface SimulationResult {
   average_money_per_game: number;
 }
 
+export interface SimulationHistoryItem {
+  id: string;
+  status: string;
+  num_games: number;
+  participant_count: number;
+  winner_name: string | null;
+  winner_games_won: number | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
 export interface SimulationResults {
   simulation_id: string;
   status: string;
@@ -84,6 +97,11 @@ export const simulationService = {
 
   async getSimulationResults(id: string): Promise<SimulationResults> {
     const response = await api.get(`/simulations/${id}/results`);
+    return response.data;
+  },
+
+  async listSimulations(): Promise<SimulationHistoryItem[]> {
+    const response = await api.get("/simulations");
     return response.data;
   },
 };
