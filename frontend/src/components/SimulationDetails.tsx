@@ -294,9 +294,38 @@ export const SimulationDetails: React.FC = () => {
           {simulation.status === "running" && (
             <div className="text-center py-8">
               <ClockIcon className="h-12 w-12 text-blue-500 animate-pulse mx-auto mb-4" />
-              <p className="text-gray-600">
+              <p className="text-gray-600 mb-4">
                 Simulation is currently running...
               </p>
+
+              {/* Progress bar */}
+              <div className="max-w-md mx-auto mb-4">
+                <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+                  <span>Progress</span>
+                  <span>
+                    {simulation.games_completed.toLocaleString()} /{" "}
+                    {simulation.num_games.toLocaleString()} games
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full transition-all duration-500 ease-out"
+                    style={{
+                      width: `${(simulation.games_completed / simulation.num_games) * 100}%`,
+                    }}
+                  >
+                    <div className="h-full bg-white bg-opacity-30 animate-pulse"></div>
+                  </div>
+                </div>
+                <div className="text-center mt-2 text-sm font-medium text-gray-700">
+                  {(
+                    (simulation.games_completed / simulation.num_games) *
+                    100
+                  ).toFixed(1)}
+                  % complete
+                </div>
+              </div>
+
               <p className="text-sm text-gray-500 mt-2">
                 This page will auto-refresh every 2 seconds
               </p>

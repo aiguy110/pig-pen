@@ -161,6 +161,34 @@ export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({
             <p className="text-sm text-red-800">{simulation.error_message}</p>
           </div>
         )}
+
+        {simulation.status === "running" && (
+          <div className="mt-4">
+            <div className="flex justify-between text-sm font-medium text-gray-600">
+              <span>
+                {simulation.games_completed.toLocaleString()} /{" "}
+                {simulation.num_games.toLocaleString()} games
+              </span>
+              <span>
+                {(
+                  (simulation.games_completed / simulation.num_games) *
+                  100
+                ).toFixed(1)}
+                %
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+              <div
+                className="bg-indigo-600 h-2 rounded-full"
+                style={{
+                  width: `${
+                    (simulation.games_completed / simulation.num_games) * 100
+                  }%`,
+                }}
+              ></div>
+            </div>
+          </div>
+        )}
       </div>
 
       {results && (

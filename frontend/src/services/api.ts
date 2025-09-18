@@ -15,6 +15,7 @@ export interface Simulation {
   id: string;
   status: "pending" | "running" | "completed" | "failed";
   num_games: number;
+  games_completed: number;
   created_at: string;
   started_at?: string;
   completed_at?: string;

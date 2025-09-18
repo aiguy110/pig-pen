@@ -9,7 +9,7 @@ use crate::{db, game};
 pub struct SimulationTask {
     pub simulation_id: String,
     pub bots: Vec<db::Bot>,
-    pub num_games: i32,
+    pub num_games: u32,
 }
 
 pub struct SimulationManager {
@@ -31,7 +31,7 @@ impl SimulationManager {
         }
     }
 
-    pub fn queue_simulation(&mut self, simulation_id: String, bots: Vec<db::Bot>, num_games: i32) {
+    pub fn queue_simulation(&mut self, simulation_id: String, bots: Vec<db::Bot>, num_games: u32) {
         println!(
             "[QUEUE] Adding simulation {} to queue (current queue size: {})",
             simulation_id,
@@ -107,7 +107,12 @@ async fn run_simulation(task: SimulationTask, pool: SqlitePool, engine: Arc<Engi
     let num_games = task.num_games;
 
     // Run the simulation in a blocking task
-    let simulation_result = task::spawn_blocking(move || run_simulation_sync(task, engine)).await?;
+    let pool_clone = pool.clone();
+    let simulation_id_clone = simulation_id.clone();
+    let simulation_result = task::spawn_blocking(move || {
+        run_simulation_sync(task, engine, pool_clone, simulation_id_clone)
+    })
+    .await?;
 
     match simulation_result {
         Ok((results, bot_ids)) => {
@@ -173,6 +178,8 @@ async fn run_simulation(task: SimulationTask, pool: SqlitePool, engine: Arc<Engi
 fn run_simulation_sync(
     task: SimulationTask,
     engine: Arc<Engine>,
+    pool: SqlitePool,
+    simulation_id: String,
 ) -> Result<(Vec<(u32, i64)>, (String, Vec<String>))> {
     let mut strategies = Vec::new();
     let mut bot_ids = Vec::new();
@@ -186,11 +193,30 @@ fn run_simulation_sync(
     let num_players = strategies.len();
     let mut total_stats = vec![(0u32, 0i64); num_players];
 
-    for _ in 0..task.num_games {
+    // Update progress every 1% of games or every 100 games, whichever is larger
+    let update_interval = std::cmp::max(100, std::cmp::max(1, task.num_games / 100)) as u32;
+
+    for game_num in 0..task.num_games {
         let results = game::simulate_game(&mut strategies)?;
         for i in 0..num_players {
             total_stats[i].0 += results[i].0;
             total_stats[i].1 += results[i].1;
+        }
+
+        // Update progress periodically
+        if (game_num + 1) % update_interval == 0 || game_num + 1 == task.num_games {
+            let rt = tokio::runtime::Handle::current();
+            let pool_clone = pool.clone();
+            let sim_id = simulation_id.clone();
+            let games_done = game_num + 1;
+
+            rt.spawn(async move {
+                let _ = sqlx::query("UPDATE simulations SET games_completed = ? WHERE id = ?")
+                    .bind(games_done)
+                    .bind(&sim_id)
+                    .execute(&pool_clone)
+                    .await;
+            });
         }
     }
 

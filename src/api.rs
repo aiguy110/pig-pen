@@ -40,7 +40,7 @@ struct UploadBotResponse {
 #[derive(Deserialize)]
 struct StartSimulationRequest {
     bot_ids: Vec<String>,
-    num_games: i32,
+    num_games: u32,
 }
 
 #[derive(Serialize)]
@@ -53,7 +53,8 @@ struct StartSimulationResponse {
 struct SimulationStatusResponse {
     id: String,
     status: String,
-    num_games: i32,
+    num_games: u32,
+    games_completed: u32,
     created_at: String,
     started_at: Option<String>,
     completed_at: Option<String>,
@@ -64,7 +65,7 @@ struct SimulationStatusResponse {
 struct SimulationResultsResponse {
     simulation_id: String,
     status: String,
-    num_games: i32,
+    num_games: u32,
     results: Vec<ParticipantResult>,
     completed_at: Option<String>,
 }
@@ -87,6 +88,7 @@ struct SimulationHistoryItem {
     participant_count: i64,
     winner_name: Option<String>,
     winner_games_won: Option<i32>,
+    winner_total_money: Option<i64>,
     created_at: String,
     started_at: Option<String>,
     completed_at: Option<String>,
@@ -323,7 +325,7 @@ async fn list_simulations(
                 FROM simulation_participants sp
                 JOIN bots b ON sp.bot_id = b.id
                 WHERE sp.simulation_id = ?
-                ORDER BY sp.games_won DESC, sp.total_money DESC
+                ORDER BY sp.total_money DESC, sp.games_won DESC
                 LIMIT 1
                 "#,
             )
@@ -342,6 +344,7 @@ async fn list_simulations(
             participant_count: sim.participant_count,
             winner_name: winner_info.as_ref().map(|w| w.bot_name.clone()),
             winner_games_won: winner_info.as_ref().map(|w| w.games_won),
+            winner_total_money: winner_info.as_ref().map(|w| w.total_money),
             created_at: sim.created_at,
             started_at: sim.started_at,
             completed_at: sim.completed_at,
@@ -367,6 +370,7 @@ async fn get_simulation_status(
         id: simulation.id,
         status: simulation.status,
         num_games: simulation.num_games,
+        games_completed: simulation.games_completed,
         created_at: simulation.created_at,
         started_at: simulation.started_at,
         completed_at: simulation.completed_at,

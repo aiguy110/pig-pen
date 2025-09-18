@@ -16,7 +16,8 @@ pub struct Bot {
 pub struct Simulation {
     pub id: String,
     pub status: String,
-    pub num_games: i32,
+    pub num_games: u32,
+    pub games_completed: u32,
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -60,6 +61,7 @@ pub async fn create_pool() -> Result<SqlitePool> {
             id TEXT PRIMARY KEY,
             status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')),
             num_games INTEGER NOT NULL,
+            games_completed INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             started_at DATETIME,
             completed_at DATETIME,
@@ -69,6 +71,11 @@ pub async fn create_pool() -> Result<SqlitePool> {
     )
     .execute(&pool)
     .await?;
+
+    // Add games_completed column if it doesn't exist (migration for existing databases)
+    let _ = sqlx::query("ALTER TABLE simulations ADD COLUMN games_completed INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
 
     sqlx::query(
         r#"
