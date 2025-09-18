@@ -13,20 +13,81 @@ pub mod exports {
                 #[doc(hidden)]
                 static __FORCE_SECTION_REF: fn() = super::super::super::super::__link_custom_section_describing_imports;
                 use super::super::super::super::_rt;
+                /// Represents a single dice roll as a tuple of two u32 values
+                pub type Roll = (u32, u32);
+                /// Game state information passed to strategy functions
+                #[derive(Clone)]
+                pub struct GameState {
+                    /// The current player's index in the game (0-based)
+                    pub current_player_index: u32,
+                    /// The player's current banked score (locked in from previous turns)
+                    pub current_banked_score: u32,
+                    /// The player's current total score (banked + current turn points)
+                    pub current_total_score: u32,
+                    /// List of all players' banked scores (including current player)
+                    /// Index corresponds to player position in the game
+                    pub all_players_banked_scores: _rt::Vec<u32>,
+                    /// Complete turn history as (player-index, roll) pairs
+                    /// player-index indicates which player made the roll
+                    /// roll is a tuple of the two dice values
+                    pub turn_history: _rt::Vec<(u32, Roll)>,
+                }
+                impl ::core::fmt::Debug for GameState {
+                    fn fmt(
+                        &self,
+                        f: &mut ::core::fmt::Formatter<'_>,
+                    ) -> ::core::fmt::Result {
+                        f.debug_struct("GameState")
+                            .field("current-player-index", &self.current_player_index)
+                            .field("current-banked-score", &self.current_banked_score)
+                            .field("current-total-score", &self.current_total_score)
+                            .field(
+                                "all-players-banked-scores",
+                                &self.all_players_banked_scores,
+                            )
+                            .field("turn-history", &self.turn_history)
+                            .finish()
+                    }
+                }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_should_roll_cabi<T: Guest>(
                     arg0: i32,
-                    arg1: *mut u8,
-                    arg2: usize,
+                    arg1: i32,
+                    arg2: i32,
+                    arg3: *mut u8,
+                    arg4: usize,
+                    arg5: *mut u8,
+                    arg6: usize,
                 ) -> i32 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
-                    let len0 = arg2;
-                    let result1 = T::should_roll(
-                        arg0 as u32,
-                        _rt::Vec::from_raw_parts(arg1.cast(), len0, len0),
-                    );
-                    match result1 {
+                    let len0 = arg4;
+                    let base4 = arg5;
+                    let len4 = arg6;
+                    let mut result4 = _rt::Vec::with_capacity(len4);
+                    for i in 0..len4 {
+                        let base = base4.add(i * 12);
+                        let e4 = {
+                            let l1 = *base.add(0).cast::<i32>();
+                            let l2 = *base.add(4).cast::<i32>();
+                            let l3 = *base.add(8).cast::<i32>();
+                            (l1 as u32, (l2 as u32, l3 as u32))
+                        };
+                        result4.push(e4);
+                    }
+                    _rt::cabi_dealloc(base4, len4 * 12, 4);
+                    let result5 = T::should_roll(GameState {
+                        current_player_index: arg0 as u32,
+                        current_banked_score: arg1 as u32,
+                        current_total_score: arg2 as u32,
+                        all_players_banked_scores: _rt::Vec::from_raw_parts(
+                            arg3.cast(),
+                            len0,
+                            len0,
+                        ),
+                        turn_history: result4,
+                    });
+                    match result5 {
                         true => 1,
                         false => 0,
                     }
@@ -35,20 +96,20 @@ pub mod exports {
                     /// Decides whether to roll the dice given the current game state
                     ///
                     /// Parameters:
-                    /// - own-score: The player's current score
-                    /// - other-scores: List of all other players' current scores
+                    /// - state: Complete game state information
                     ///
                     /// Returns: true to roll, false to hold
-                    fn should_roll(own_score: u32, other_scores: _rt::Vec<u32>) -> bool;
+                    fn should_roll(state: GameState) -> bool;
                 }
                 #[doc(hidden)]
                 macro_rules! __export_pig_pen_player_strategy_0_1_0_cabi {
                     ($ty:ident with_types_in $($path_to_types:tt)*) => {
                         const _ : () = { #[unsafe (export_name =
                         "pig-pen:player/strategy@0.1.0#should-roll")] unsafe extern "C"
-                        fn export_should_roll(arg0 : i32, arg1 : * mut u8, arg2 : usize,)
-                        -> i32 { unsafe { $($path_to_types)*::
-                        _export_should_roll_cabi::<$ty > (arg0, arg1, arg2) } } };
+                        fn export_should_roll(arg0 : i32, arg1 : i32, arg2 : i32, arg3 :
+                        * mut u8, arg4 : usize, arg5 : * mut u8, arg6 : usize,) -> i32 {
+                        unsafe { $($path_to_types)*:: _export_should_roll_cabi::<$ty >
+                        (arg0, arg1, arg2, arg3, arg4, arg5, arg6) } } };
                     };
                 }
                 #[doc(hidden)]
@@ -60,12 +121,20 @@ pub mod exports {
 #[rustfmt::skip]
 mod _rt {
     #![allow(dead_code, clippy::all)]
+    pub use alloc_crate::vec::Vec;
     #[cfg(target_arch = "wasm32")]
     pub fn run_ctors_once() {
         wit_bindgen_rt::run_ctors_once();
     }
-    pub use alloc_crate::vec::Vec;
+    pub unsafe fn cabi_dealloc(ptr: *mut u8, size: usize, align: usize) {
+        if size == 0 {
+            return;
+        }
+        let layout = alloc::Layout::from_size_align_unchecked(size, align);
+        alloc::dealloc(ptr, layout);
+    }
     extern crate alloc as alloc_crate;
+    pub use alloc_crate::alloc;
 }
 /// Generates `#[unsafe(no_mangle)]` functions to export the specified type as
 /// the root implementation of all generated traits.
@@ -103,12 +172,15 @@ pub(crate) use __export_player_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 248] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07|\x01A\x02\x01A\x02\x01\
-B\x03\x01py\x01@\x02\x09own-scorey\x0cother-scores\0\0\x7f\x04\0\x0bshould-roll\x01\
-\x01\x04\0\x1dpig-pen:player/strategy@0.1.0\x05\0\x04\0\x1bpig-pen:player/player\
-@0.1.0\x04\0\x0b\x0c\x01\0\x06player\x03\0\0\0G\x09producers\x01\x0cprocessed-by\
-\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 379] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xfe\x01\x01A\x02\x01\
+A\x02\x01B\x09\x01o\x02yy\x04\0\x04roll\x03\0\0\x01py\x01o\x02y\x01\x01p\x03\x01\
+r\x05\x14current-player-indexy\x14current-banked-scorey\x13current-total-scorey\x19\
+all-players-banked-scores\x02\x0cturn-history\x04\x04\0\x0agame-state\x03\0\x05\x01\
+@\x01\x05state\x06\0\x7f\x04\0\x0bshould-roll\x01\x07\x04\0\x1dpig-pen:player/st\
+rategy@0.1.0\x05\0\x04\0\x1bpig-pen:player/player@0.1.0\x04\0\x0b\x0c\x01\0\x06p\
+layer\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.\
+1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

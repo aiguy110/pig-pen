@@ -59,12 +59,19 @@ The application will be available at `http://localhost:8080`
 
 ### Bot Interface
 
-Bots implement a simple decision interface:
+Bots implement a comprehensive decision interface:
 ```wit
-should-roll: func(own-score: u32, other-scores: list<u32>) -> bool
+interface strategy {
+    should-roll: func(state: game-state) -> bool
+}
 ```
 - Returns `true` to roll, `false` to hold
-- Receives current score and all opponents' scores
+- Receives a game state record containing:
+  - `current-player-index`: Your index in the game (0-based)
+  - `current-banked-score`: Your locked-in score from previous turns
+  - `current-total-score`: Your total including current turn points
+  - `all-players-banked-scores`: All players' banked scores (including yours)
+  - `turn-history`: Complete history of rolls as (player-index, roll) tuples
 
 ### Building a Rust Bot
 
@@ -86,9 +93,29 @@ use exports::pig_pen::player::strategy::Guest;
 struct Component;
 
 impl Guest for Component {
-    fn should_roll(own_score: u32, other_scores: Vec<u32>) -> bool {
+    fn should_roll(state: GameState) -> bool {
+        // Calculate turn points from state
+        let turn_points = state.current_total_score - state.current_banked_score;
+        
         // Your strategy logic here
-        own_score < 20 || (own_score < 100 && /* more conditions */)
+        if state.current_total_score >= 100 {
+            return false; // Hold at 100+
+        }
+        
+        // Find max opponent score (excluding ourselves)
+        let max_opponent = state.all_players_banked_scores
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != state.current_player_index as usize)
+            .map(|(_, &score)| score)
+            .max()
+            .unwrap_or(0);
+        
+        if state.current_banked_score < max_opponent {
+            return turn_points < 25; // Keep rolling when behind
+        }
+        
+        turn_points < 20 // Conservative when ahead
     }
 }
 ```

@@ -58,7 +58,29 @@ pig-pen/
 package pig-pen:player@0.1.0
 
 interface strategy {
-    should-roll: func(own-score: u32, other-scores: list<u32>) -> bool
+    /// Represents a single dice roll as a tuple of two u32 values
+    type roll = tuple<u32, u32>
+
+    /// Game state information passed to strategy functions
+    record game-state {
+        /// The current player's index in the game (0-based)
+        current-player-index: u32,
+        
+        /// The player's current banked score (locked in from previous turns)
+        current-banked-score: u32,
+        
+        /// The player's current total score (banked + current turn points)
+        current-total-score: u32,
+        
+        /// List of all players' banked scores (including current player)
+        /// Index corresponds to player position in the game
+        all-players-banked-scores: list<u32>,
+        
+        /// Complete turn history as (player-index, roll) pairs
+        turn-history: list<tuple<u32, roll>>,
+    }
+
+    should-roll: func(state: game-state) -> bool
 }
 
 world player {
@@ -69,7 +91,12 @@ world player {
 ### Strategy Components
 Strategies are implemented as WASM components that:
 - Export the `strategy` interface
-- Receive their current score and opponents' scores
+- Receive a comprehensive game state including:
+  - Current player index for position awareness
+  - Current banked score (locked in from previous turns)
+  - Current total score (including turn points)
+  - All players' banked scores with consistent indexing
+  - Complete turn history showing all rolls
 - Return a boolean decision (true = roll, false = hold)
 
 ## Building and Running
@@ -129,7 +156,9 @@ Any language with WASM component support can implement strategies by:
 
 ### Strategy Execution
 - Strategies are called before each roll decision
-- They receive current game state (own score, all opponents' scores)
+- They receive comprehensive game state including banked scores, total scores, and turn history
+- Can distinguish between banked points (safe) and turn points (at risk)
+- Access to complete roll history enables pattern analysis and advanced strategies
 - Must return quickly to maintain simulation performance
 
 ### Statistics Tracking

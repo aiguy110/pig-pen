@@ -1,11 +1,17 @@
+#![no_std]
+
+#[cfg(feature = "wee_alloc")]
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
 #[allow(warnings)]
 mod bindings;
 
-use bindings::exports::pig_pen::player::strategy::Guest;
+use bindings::exports::pig_pen::player::strategy::{GameState, Guest};
+use core::panic::PanicInfo;
 
 struct Component;
 
-static mut ROLL_COUNT: u32 = 0;
 static mut SEED: u32 = 12345;
 
 fn simple_random() -> bool {
@@ -16,17 +22,20 @@ fn simple_random() -> bool {
 }
 
 impl Guest for Component {
-    fn should_roll(own_score: u32, _other_scores: Vec<u32>) -> bool {
-        unsafe {
-            ROLL_COUNT += 1;
-            if ROLL_COUNT == 1 {
-                return true;
-            }
-            ROLL_COUNT = 0;
+    fn should_roll(state: GameState) -> bool {
+        let current_turn_rolls = state
+            .turn_history
+            .iter()
+            .rev()
+            .take_while(|(player_index, _)| *player_index == state.current_player_index)
+            .count();
+
+        if state.current_total_score >= 100 {
+            return false;
         }
 
-        if own_score >= 100 {
-            return false;
+        if current_turn_rolls == 0 {
+            return true;
         }
 
         simple_random()
@@ -34,3 +43,8 @@ impl Guest for Component {
 }
 
 bindings::export!(Component with_types_in bindings);
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {}
+}

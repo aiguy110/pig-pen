@@ -121,8 +121,10 @@ async fn upload_bot(
     let wasm_data = wasm_data.ok_or(StatusCode::BAD_REQUEST)?;
 
     // Validate WASM component
-    let _ = game::WasmStrategy::new(&state.engine, &wasm_data)
-        .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    let _ = game::WasmStrategy::new(&state.engine, &wasm_data).map_err(|e| {
+        tracing::error!("WASM validation failed: {e}");
+        StatusCode::UNPROCESSABLE_ENTITY
+    })?;
 
     // Calculate hash
     let mut hasher = Sha256::new();

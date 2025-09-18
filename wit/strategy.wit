@@ -1,27 +1,31 @@
 package pig-pen:player@0.1.0;
 
-/// Represents a single dice roll as a tuple of two u32 values
-type roll = tuple<u32, u32>;
-
-/// Game state information passed to strategy functions
-record game-state {
-    /// The player's current banked score (locked in from previous turns)
-    current-banked-score: u32,
-    
-    /// The player's current total score (banked + current turn points)
-    current-total-score: u32,
-    
-    /// List of all other players' banked scores
-    other-player-banked-scores: list<u32>,
-    
-    /// Complete turn history as (player-index, roll) pairs
-    /// player-index indicates which player made the roll
-    /// roll is a tuple of the two dice values
-    turn-history: list<tuple<u32, roll>>,
-}
-
 /// Interface for a Pig game strategy
 interface strategy {
+    /// Represents a single dice roll as a tuple of two u32 values
+    type roll = tuple<u32, u32>;
+
+    /// Game state information passed to strategy functions
+    record game-state {
+        /// The current player's index in the game (0-based)
+        current-player-index: u32,
+
+        /// The player's current banked score (locked in from previous turns)
+        current-banked-score: u32,
+
+        /// The player's current total score (banked + current turn points)
+        current-total-score: u32,
+
+        /// List of all players' banked scores (including current player)
+        /// Index corresponds to player position in the game
+        all-players-banked-scores: list<u32>,
+
+        /// Complete turn history as (player-index, roll) pairs
+        /// player-index indicates which player made the roll
+        /// roll is a tuple of the two dice values
+        turn-history: list<tuple<u32, roll>>,
+    }
+
     /// Decides whether to roll the dice given the current game state
     ///
     /// Parameters:

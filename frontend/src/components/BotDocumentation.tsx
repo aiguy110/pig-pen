@@ -7,14 +7,37 @@ export const BotDocumentation: React.FC = () => {
 
 /// Interface for a Pig game strategy
 interface strategy {
+    /// Represents a single dice roll as a tuple of two u32 values
+    type roll = tuple<u32, u32>;
+
+    /// Game state information passed to strategy functions
+    record game-state {
+        /// The current player's index in the game (0-based)
+        current-player-index: u32,
+
+        /// The player's current banked score (locked in from previous turns)
+        current-banked-score: u32,
+
+        /// The player's current total score (banked + current turn points)
+        current-total-score: u32,
+
+        /// List of all players' banked scores (including current player)
+        /// Index corresponds to player position in the game
+        all-players-banked-scores: list<u32>,
+
+        /// Complete turn history as (player-index, roll) pairs
+        /// player-index indicates which player made the roll
+        /// roll is a tuple of the two dice values
+        turn-history: list<tuple<u32, roll>>,
+    }
+
     /// Decides whether to roll the dice given the current game state
     ///
     /// Parameters:
-    /// - own-score: The player's current score
-    /// - other-scores: List of all other players' current scores
+    /// - state: Complete game state information
     ///
     /// Returns: true to roll, false to hold
-    should-roll: func(own-score: u32, other-scores: list<u32>) -> bool;
+    should-roll: func(state: game-state) -> bool;
 }
 
 /// World defining what a player component needs to export
@@ -74,20 +97,31 @@ wit_bindgen::generate!({
 struct MyStrategy;
 
 impl Guest for MyStrategy {
-    fn should_roll(own_score: u32, other_scores: Vec<u32>) -> bool {
+    fn should_roll(state: GameState) -> bool {
         // Your strategy logic here
-        if own_score >= 100 {
+        // Access banked vs current total scores
+        let turn_points = state.current_total_score - state.current_banked_score;
+
+        if state.current_total_score >= 100 {
             return false; // Hold if we've reached 100
         }
 
-        // Example: Be more aggressive when behind
-        let max_opponent = other_scores.iter().max().copied().unwrap_or(0);
-        if own_score < max_opponent {
-            return true; // Keep rolling when behind
+        // Find max opponent score (excluding ourselves)
+        let max_opponent = state.all_players_banked_scores
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != state.current_player_index as usize)
+            .map(|(_, &score)| score)
+            .max()
+            .unwrap_or(0);
+
+        if state.current_banked_score < max_opponent {
+            // More aggressive when behind
+            return turn_points < 25;
         }
 
-        // Conservative when ahead
-        own_score < 90
+        // Conservative when ahead, hold at 20 points
+        turn_points < 20
     }
 }
 
@@ -131,28 +165,39 @@ from strategy.exports import Strategy
 from strategy.types import Ok
 
 class MyStrategy(Strategy):
-    def should_roll(self, own_score: int, other_scores: list[int]) -> bool:
+    def should_roll(self, state) -> bool:
         """
         Implement your strategy logic here
 
         Args:
-            own_score: Your current score
-            other_scores: List of all opponents' scores
+            state: GameState object containing:
+                - current_player_index: Your index in the game (0-based)
+                - current_banked_score: Your banked score
+                - current_total_score: Your total including turn points
+                - all_players_banked_scores: List of all players' banked scores
+                - turn_history: List of (player_index, (die1, die2)) tuples
 
         Returns:
             True to roll, False to hold
         """
+        # Calculate turn points
+        turn_points = state.current_total_score - state.current_banked_score
+
         # Hold if we've reached 100
-        if own_score >= 100:
+        if state.current_total_score >= 100:
             return False
 
-        # Be aggressive when behind
-        max_opponent = max(other_scores) if other_scores else 0
-        if own_score < max_opponent:
-            return True
+        # Find max opponent score (excluding ourselves)
+        opponents_scores = [score for i, score in enumerate(state.all_players_banked_scores)
+                           if i != state.current_player_index]
+        max_opponent = max(opponents_scores) if opponents_scores else 0
 
-        # Conservative strategy when ahead
-        return own_score < 90
+        if state.current_banked_score < max_opponent:
+            # Keep rolling until 25 points when behind
+            return turn_points < 25
+
+        # Conservative strategy when ahead - hold at 20
+        return turn_points < 20
 \`\`\`
 
 ## Step 4: Generate bindings
