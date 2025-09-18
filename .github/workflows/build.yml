@@ -63,7 +63,7 @@ jobs:
 
       # Build Rust backend
       - name: Build backend
-        run: cargo build --release --target x86_64-unknown-linux-gnu
+        run: CARGO_INCREMENTAL=1 cargo build --release --target x86_64-unknown-linux-gnu
 
       # Prepare artifacts directory
       - name: Prepare artifacts
@@ -111,6 +111,13 @@ jobs:
           name: pig-pen-linux-x64
           path: ./artifacts/linux
 
+      # Create zip archive
+      - name: Create release archive
+        run: |
+          cd artifacts
+          zip -r ../pig-pen-linux-x64.zip linux/
+          cd ..
+
       # Create and push tag
       - name: Create and push tag
         run: |
@@ -124,7 +131,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: latest
-          files: artifacts/linux/*
+          files: pig-pen-linux-x64.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
