@@ -194,7 +194,7 @@ fn run_simulation_sync(
     let mut total_stats = vec![(0u32, 0i64); num_players];
 
     // Update progress every 1% of games or every 100 games, whichever is larger
-    let update_interval = std::cmp::max(100, std::cmp::max(1, task.num_games / 100)) as u32;
+    let update_interval = std::cmp::max(1000, std::cmp::max(1, task.num_games / 100)) as u32;
 
     for game_num in 0..task.num_games {
         let results = game::simulate_game(&mut strategies)?;
