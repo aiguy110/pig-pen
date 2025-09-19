@@ -141,27 +141,6 @@ export const Rules: React.FC = () => {
               </p>
             </div>
           </section>
-
-          <section className="bg-gradient-to-r from-purple-100 to-indigo-100 rounded-lg p-6">
-            <h3 className="font-bold text-gray-900 mb-4">💡 Strategy Tips</h3>
-            <ul className="space-y-2 text-gray-700">
-              <li>
-                • Consider the risk/reward of rolling vs holding at different
-                scores
-              </li>
-              <li>• Adapt your strategy based on other bots' scores</li>
-              <li>• Remember the mandatory roll rule when you get doubles</li>
-              <li>
-                • Avoid hitting exactly 100 - plan your approach carefully
-              </li>
-              <li>
-                • In the endgame, calculate if it's worth risking for the lead
-              </li>
-              <li>
-                • Track how many doubles you've rolled to avoid three in a row
-              </li>
-            </ul>
-          </section>
         </div>
       </div>
     </div>

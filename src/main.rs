@@ -1,10 +1,15 @@
 use anyhow::Result;
+use axum::http::header;
 use axum::Router;
 use clap::{Parser, Subcommand};
 use pig_pen::{api, db, game, simulation::SimulationManager};
 use std::{path::PathBuf, sync::Arc};
 use tokio::{fs, net::TcpListener, sync::RwLock};
-use tower_http::{cors::CorsLayer, services::ServeDir};
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
+};
 
 #[derive(Parser)]
 #[command(name = "pig-pen")]
@@ -85,10 +90,23 @@ async fn main() -> Result<()> {
     // All other routes fall back to serving static files from frontend/build
     let api_routes = api::create_router(state);
 
+    // ServeDir with fallback to index.html for client-side routing
+    let serve_dir =
+        ServeDir::new("frontend/build").fallback(ServeFile::new("frontend/build/index.html"));
+
     let app = Router::new()
         .nest("/api", api_routes)
-        .fallback_service(ServeDir::new("frontend/build"))
-        .layer(CorsLayer::permissive());
+        .fallback_service(serve_dir)
+        .layer(CorsLayer::permissive())
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CACHE_CONTROL,
+            "no-store, no-cache, must-revalidate",
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::PRAGMA,
+            "no-cache",
+        ))
+        .layer(SetResponseHeaderLayer::overriding(header::EXPIRES, "0"));
 
     // Start server
     let addr = format!("0.0.0.0:{}", cli.port);
