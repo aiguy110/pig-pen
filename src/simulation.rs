@@ -229,17 +229,14 @@ fn run_simulation_sync(
             let sim_id = simulation_id.clone();
             let games_done = game_num + 1;
 
-            // Use blocking thread to avoid spawning unbounded async tasks
-            std::thread::spawn(move || {
-                // Create a new runtime for this blocking operation
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                rt.block_on(async {
-                    let _ = sqlx::query("UPDATE simulations SET games_completed = ? WHERE id = ?")
-                        .bind(games_done)
-                        .bind(&sim_id)
-                        .execute(&pool_clone)
-                        .await;
-                });
+            // Use the existing runtime handle instead of creating a new one
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async {
+                let _ = sqlx::query("UPDATE simulations SET games_completed = ? WHERE id = ?")
+                    .bind(games_done)
+                    .bind(&sim_id)
+                    .execute(&pool_clone)
+                    .await;
             });
         }
     }
