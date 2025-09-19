@@ -71,6 +71,7 @@ cd "$PIGPEN_DIR"
 # Extract
 log "Extracting new artifact..."
 unzip -o "$NEW_ARTIFACT" -d "$PIGPEN_DIR"
+mv linux/* .
 
 # Restore db and bots
 log "Restoring db and bots..."
