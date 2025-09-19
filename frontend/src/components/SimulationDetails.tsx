@@ -226,7 +226,7 @@ export const SimulationDetails: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {results.results
-                      .sort((a, b) => b.games_won - a.games_won)
+                      .sort((a, b) => b.total_money - a.total_money)
                       .map((result, index) => (
                         <tr
                           key={result.bot_id}
