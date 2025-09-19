@@ -1,5 +1,5 @@
 use anyhow::Result;
-use axum::http::header;
+use axum::http::{header, HeaderValue};
 use axum::Router;
 use clap::{Parser, Subcommand};
 use pig_pen::{api, db, game, simulation::SimulationManager};
@@ -100,13 +100,16 @@ async fn main() -> Result<()> {
         .layer(CorsLayer::permissive())
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
-            "no-store, no-cache, must-revalidate",
+            HeaderValue::from_static("no-store, no-cache, must-revalidate"),
         ))
         .layer(SetResponseHeaderLayer::overriding(
             header::PRAGMA,
-            "no-cache",
+            HeaderValue::from_static("no-cache"),
         ))
-        .layer(SetResponseHeaderLayer::overriding(header::EXPIRES, "0"));
+        .layer(SetResponseHeaderLayer::overriding(
+            header::EXPIRES,
+            HeaderValue::from_static("0"),
+        ));
 
     // Start server
     let addr = format!("0.0.0.0:{}", cli.port);

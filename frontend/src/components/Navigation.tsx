@@ -7,8 +7,8 @@ export const Navigation: React.FC = () => {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between py-4">
           <div className="flex items-center space-x-2">
-            <span className="text-3xl">🎲</span>
-            <h1 className="text-2xl font-bold text-gray-900">Pig-Pen Arena</h1>
+            <img src="/favicon.ico" alt="Pig-Pen logo" className="w-8 h-8" />
+            <h1 className="text-2xl font-bold text-gray-900">Pig-Pen</h1>
           </div>
 
           <div className="flex space-x-6">
