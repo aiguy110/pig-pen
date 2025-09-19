@@ -210,8 +210,8 @@ fn run_simulation_sync(
     let mut total_stats = vec![(0u32, 0i64); num_players];
     let mut total_usage_stats: Vec<(u64, u64)> = vec![(0, 0); num_players]; // (total_fuel, peak_memory)
 
-    // Update progress every 1% of games or every 100 games, whichever is larger
-    let update_interval = std::cmp::max(1000, std::cmp::max(1, task.num_games / 100)) as u32;
+    // Update progress every 1% of games or every 5000 games, whichever is larger
+    let update_interval = std::cmp::max(5000, std::cmp::max(1, task.num_games / 100)) as u32;
 
     for game_num in 0..task.num_games {
         let (results, usage) = game::simulate_game(&mut strategies)?;
@@ -219,22 +219,27 @@ fn run_simulation_sync(
             total_stats[i].0 += results[i].0;
             total_stats[i].1 += results[i].1;
             total_usage_stats[i].0 += usage[i].0; // fuel
-            total_usage_stats[i].1 = std::cmp::max(total_usage_stats[i].1, usage[i].1); // memory
+            total_usage_stats[i].1 = std::cmp::max(total_usage_stats[i].1, usage[i].1);
+            // memory
         }
 
-        // Update progress periodically
+        // Update progress periodically using blocking database call
         if (game_num + 1) % update_interval == 0 || game_num + 1 == task.num_games {
-            let rt = tokio::runtime::Handle::current();
             let pool_clone = pool.clone();
             let sim_id = simulation_id.clone();
             let games_done = game_num + 1;
 
-            rt.spawn(async move {
-                let _ = sqlx::query("UPDATE simulations SET games_completed = ? WHERE id = ?")
-                    .bind(games_done)
-                    .bind(&sim_id)
-                    .execute(&pool_clone)
-                    .await;
+            // Use blocking thread to avoid spawning unbounded async tasks
+            std::thread::spawn(move || {
+                // Create a new runtime for this blocking operation
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    let _ = sqlx::query("UPDATE simulations SET games_completed = ? WHERE id = ?")
+                        .bind(games_done)
+                        .bind(&sim_id)
+                        .execute(&pool_clone)
+                        .await;
+                });
             });
         }
     }
