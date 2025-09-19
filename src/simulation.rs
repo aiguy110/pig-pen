@@ -115,7 +115,7 @@ async fn run_simulation(task: SimulationTask, pool: SqlitePool, engine: Arc<Engi
     .await?;
 
     match simulation_result {
-        Ok((results, bot_ids)) => {
+        Ok((results, usage_stats, bot_ids)) => {
             println!(
                 "[SIMULATION {}] Simulation completed successfully",
                 bot_ids.0
@@ -125,18 +125,34 @@ async fn run_simulation(task: SimulationTask, pool: SqlitePool, engine: Arc<Engi
             for (index, (games_won, total_money)) in results.iter().enumerate() {
                 let win_rate = (*games_won as f64 / num_games as f64) * 100.0;
                 let avg_money = *total_money as f64 / num_games as f64;
+                let total_fuel = usage_stats[index].0;
+                let avg_fuel = total_fuel as f64 / num_games as f64;
+                let peak_memory = usage_stats[index].1;
+
                 println!(
-                    "[SIMULATION {}] Bot {} (index {}): {} wins ({:.1}%), ${} total (${:.2} avg/game)",
-                    bot_ids.0, bot_ids.1[index], index, games_won, win_rate, total_money, avg_money
+                    "[SIMULATION {}] Bot {} (index {}): {} wins ({:.1}%), ${} total (${:.2} avg/game), {} fuel total ({:.2} avg/game), {} peak memory",
+                    bot_ids.0,
+                    bot_ids.1[index],
+                    index,
+                    games_won,
+                    win_rate,
+                    total_money,
+                    avg_money,
+                    total_fuel,
+                    avg_fuel,
+                    peak_memory
                 );
 
                 sqlx::query(
                     "UPDATE simulation_participants
-                     SET games_won = ?, total_money = ?
+                     SET games_won = ?, total_money = ?, total_fuel_consumed = ?, avg_fuel_per_game = ?, peak_memory_bytes = ?
                      WHERE simulation_id = ? AND bot_id = ? AND player_index = ?",
                 )
                 .bind(*games_won as i32)
                 .bind(*total_money)
+                .bind(total_fuel as i64)
+                .bind(avg_fuel)
+                .bind(peak_memory as i64)
                 .bind(&bot_ids.0)
                 .bind(&bot_ids.1[index])
                 .bind(index as i32)
@@ -180,7 +196,7 @@ fn run_simulation_sync(
     engine: Arc<Engine>,
     pool: SqlitePool,
     simulation_id: String,
-) -> Result<(Vec<(u32, i64)>, (String, Vec<String>))> {
+) -> Result<(Vec<(u32, i64)>, Vec<(u64, u64)>, (String, Vec<String>))> {
     let mut strategies = Vec::new();
     let mut bot_ids = Vec::new();
 
@@ -192,15 +208,18 @@ fn run_simulation_sync(
 
     let num_players = strategies.len();
     let mut total_stats = vec![(0u32, 0i64); num_players];
+    let mut total_usage_stats: Vec<(u64, u64)> = vec![(0, 0); num_players]; // (total_fuel, peak_memory)
 
     // Update progress every 1% of games or every 100 games, whichever is larger
     let update_interval = std::cmp::max(1000, std::cmp::max(1, task.num_games / 100)) as u32;
 
     for game_num in 0..task.num_games {
-        let results = game::simulate_game(&mut strategies)?;
+        let (results, usage) = game::simulate_game(&mut strategies)?;
         for i in 0..num_players {
             total_stats[i].0 += results[i].0;
             total_stats[i].1 += results[i].1;
+            total_usage_stats[i].0 += usage[i].0; // fuel
+            total_usage_stats[i].1 = std::cmp::max(total_usage_stats[i].1, usage[i].1); // memory
         }
 
         // Update progress periodically
@@ -220,5 +239,9 @@ fn run_simulation_sync(
         }
     }
 
-    Ok((total_stats, (task.simulation_id, bot_ids)))
+    Ok((
+        total_stats,
+        total_usage_stats,
+        (task.simulation_id, bot_ids),
+    ))
 }

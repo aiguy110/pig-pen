@@ -31,6 +31,10 @@ pub struct SimulationParticipant {
     pub player_index: i32,
     pub games_won: i32,
     pub total_money: i64,
+    pub total_fuel_consumed: Option<i64>,
+    pub avg_fuel_per_game: Option<f64>,
+    pub peak_memory_bytes: Option<i64>,
+    pub avg_memory_bytes: Option<i64>,
 }
 
 pub async fn create_pool() -> Result<SqlitePool> {
@@ -85,6 +89,10 @@ pub async fn create_pool() -> Result<SqlitePool> {
             player_index INTEGER NOT NULL,
             games_won INTEGER DEFAULT 0,
             total_money INTEGER DEFAULT 0,
+            total_fuel_consumed INTEGER,
+            avg_fuel_per_game REAL,
+            peak_memory_bytes INTEGER,
+            avg_memory_bytes INTEGER,
             PRIMARY KEY (simulation_id, bot_id, player_index),
             FOREIGN KEY (simulation_id) REFERENCES simulations(id),
             FOREIGN KEY (bot_id) REFERENCES bots(id)
@@ -93,6 +101,21 @@ pub async fn create_pool() -> Result<SqlitePool> {
     )
     .execute(&pool)
     .await?;
+
+    // Add new columns for existing databases
+    let _ =
+        sqlx::query("ALTER TABLE simulation_participants ADD COLUMN total_fuel_consumed INTEGER")
+            .execute(&pool)
+            .await;
+    let _ = sqlx::query("ALTER TABLE simulation_participants ADD COLUMN avg_fuel_per_game REAL")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE simulation_participants ADD COLUMN peak_memory_bytes INTEGER")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE simulation_participants ADD COLUMN avg_memory_bytes INTEGER")
+        .execute(&pool)
+        .await;
 
     Ok(pool)
 }

@@ -78,6 +78,9 @@ struct ParticipantResult {
     games_won: i32,
     total_money: i64,
     average_money_per_game: f64,
+    total_fuel_consumed: Option<i64>,
+    avg_fuel_per_game: Option<f64>,
+    peak_memory_bytes: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -413,6 +416,9 @@ async fn get_simulation_results(
             games_won: participant.games_won,
             total_money: participant.total_money,
             average_money_per_game: participant.total_money as f64 / simulation.num_games as f64,
+            total_fuel_consumed: participant.total_fuel_consumed,
+            avg_fuel_per_game: participant.avg_fuel_per_game,
+            peak_memory_bytes: participant.peak_memory_bytes,
         });
     }
 

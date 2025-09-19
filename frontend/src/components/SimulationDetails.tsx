@@ -33,6 +33,7 @@ export const SimulationDetails: React.FC = () => {
 
         if (status.status === "completed") {
           const simResults = await simulationService.getSimulationResults(id);
+          console.log("Simulation results:", simResults);
           setResults(simResults);
         }
       } catch (err) {
@@ -222,6 +223,12 @@ export const SimulationDetails: React.FC = () => {
                       <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">
                         Avg Money/Game
                       </th>
+                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">
+                        Avg Fuel/Game
+                      </th>
+                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">
+                        Peak Memory
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -282,6 +289,17 @@ export const SimulationDetails: React.FC = () => {
                                 2,
                               )}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-700">
+                            {result.avg_fuel_per_game?.toLocaleString(
+                              undefined,
+                              { maximumFractionDigits: 0 },
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-700">
+                            {result.peak_memory_bytes
+                              ? `${(result.peak_memory_bytes / 1024).toFixed(2)} KB`
+                              : ""}
                           </td>
                         </tr>
                       ))}

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use rand::Rng;
 use rand::seq::SliceRandom;
+use rand::Rng;
 use std::fs;
 use wasmtime::component::*;
 use wasmtime::{Config, Engine, Store};
@@ -36,26 +36,27 @@ fn roll_dice() -> DiceRoll {
 pub struct WasmStrategy {
     store: Store<()>,
     player: Player,
+    fuel_consumed: u64,
 }
 
 impl WasmStrategy {
     pub fn new(engine: &Engine, wasm_bytes: &[u8]) -> Result<Self> {
         let mut store = Store::new(&engine, ());
+        store.set_fuel(1_000_000_000)?;
 
         let component = Component::from_binary(&engine, &wasm_bytes)
             .context("Failed to compile WASM component")?;
 
         let linker = Linker::new(&engine);
 
-        let player = match Player::instantiate(&mut store, &component, &linker) {
-            Ok(player) => player,
-            Err(e) => {
-                println!("Error instantiating player: {:?}", e);
-                return Err(e).context("Failed to instantiate WASM component");
-            }
-        };
+        let (player, _) = Player::instantiate(&mut store, &component, &linker)
+            .context("Failed to instantiate WASM component")?;
 
-        Ok(WasmStrategy { store, player })
+        Ok(WasmStrategy {
+            store,
+            player,
+            fuel_consumed: 0,
+        })
     }
 
     pub fn from_file(engine: &Engine, wasm_path: &str) -> Result<Self> {
@@ -65,10 +66,25 @@ impl WasmStrategy {
     }
 
     fn should_roll(&mut self, state: GameState) -> Result<bool> {
-        self.player
+        let fuel_before = self.store.get_fuel()?;
+
+        let result = self
+            .player
             .pig_pen_player_strategy()
-            .call_should_roll(&mut self.store, &state)
-            .context("Failed to call should_roll function")
+            .call_should_roll(&mut self.store, &state);
+
+        let fuel_after = self.store.get_fuel()?;
+        let consumed = fuel_before - fuel_after;
+        self.fuel_consumed += consumed;
+
+        // Replenish fuel for the next call
+        self.store.set_fuel(fuel_after + consumed)?;
+
+        result.context("Failed to call should_roll function")
+    }
+
+    pub fn fuel_consumed(&self) -> u64 {
+        self.fuel_consumed
     }
 }
 
@@ -158,7 +174,9 @@ pub fn simulate_turn(
     Ok(player_state.score)
 }
 
-pub fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<Vec<(u32, i64)>> {
+pub fn simulate_game(
+    strategies: &mut Vec<WasmStrategy>,
+) -> Result<(Vec<(u32, i64)>, Vec<(u64, u64)>)> {
     let num_players = strategies.len();
     let mut players: Vec<PlayerState> = vec![
         PlayerState {
@@ -254,11 +272,17 @@ pub fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<Vec<(u32, i64
         }
     }
 
-    Ok(results)
+    let mut usage_stats: Vec<(u64, u64)> = Vec::with_capacity(num_players);
+    for strategy in strategies {
+        usage_stats.push((strategy.fuel_consumed(), 1024 * 1024)); // Placeholder for memory
+    }
+
+    Ok((results, usage_stats))
 }
 
 pub fn create_engine() -> Result<Engine> {
     let mut config = Config::new();
     config.wasm_component_model(true);
+    config.consume_fuel(true);
     Ok(Engine::new(&config)?)
 }

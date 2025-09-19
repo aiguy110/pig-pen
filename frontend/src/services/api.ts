@@ -29,6 +29,9 @@ export interface SimulationResult {
   games_won: number;
   total_money: number;
   average_money_per_game: number;
+  total_fuel_consumed: number | null;
+  avg_fuel_per_game: number | null;
+  peak_memory_bytes: number | null;
 }
 
 export interface SimulationHistoryItem {
