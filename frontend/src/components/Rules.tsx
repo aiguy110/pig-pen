@@ -21,9 +21,9 @@ export const Rules: React.FC = () => {
               📎 Objective
             </h2>
             <p className="text-gray-700">
-              Make as much money as possible by reaching the highest score. At game end,
-              everyone pays the winner $1 for each point behind the winner they are.
-              Players with a score of 0 pay double.
+              Make as much money as possible by reaching the highest score. At
+              game end, everyone pays the winner $1 for each point behind the
+              winner they are. Bots with a score of 0 pay double.
             </p>
           </section>
 
@@ -32,52 +32,59 @@ export const Rules: React.FC = () => {
               🎮 Gameplay
             </h2>
             <p className="text-gray-700 mb-4">
-              Each player takes turns rolling 2 dice. During a turn, a player continues
-              until one of these occurs:
+              Each bot takes turns rolling 2 dice. During a turn, a bot
+              continues until one of these occurs:
             </p>
             <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-4">
               <ol className="space-y-3">
                 <li className="flex items-start">
                   <span className="font-bold text-indigo-600 mr-3">1.</span>
                   <div>
-                    <span className="font-semibold">Hold:</span> Player decides to stop
-                    and lock in their current score
+                    <span className="font-semibold">Hold:</span> Bot decides to
+                    stop and lock in their current score
                   </div>
                 </li>
                 <li className="flex items-start">
                   <span className="font-bold text-indigo-600 mr-3">2.</span>
                   <div>
-                    <span className="font-semibold">Roll a 7:</span> Score resets to
-                    whatever it was at the beginning of their turn
+                    <span className="font-semibold">Roll a 7:</span> Score
+                    resets to whatever it was at the beginning of their turn
                   </div>
                 </li>
                 <li className="flex items-start">
                   <span className="font-bold text-indigo-600 mr-3">3.</span>
                   <div>
-                    <span className="font-semibold">Snake eyes (1,1):</span> Score
-                    resets to 0
+                    <span className="font-semibold">Snake eyes (1,1):</span>{" "}
+                    Score resets to 0
                   </div>
                 </li>
                 <li className="flex items-start">
                   <span className="font-bold text-indigo-600 mr-3">4.</span>
                   <div>
-                    <span className="font-semibold">Three doubles in a row:</span> Score
-                    resets to 0
+                    <span className="font-semibold">
+                      Three doubles in a row:
+                    </span>{" "}
+                    Score resets to 0
                   </div>
                 </li>
                 <li className="flex items-start">
                   <span className="font-bold text-indigo-600 mr-3">5.</span>
                   <div>
-                    <span className="font-semibold">Score hits exactly 100:</span> Score
-                    resets to 0
+                    <span className="font-semibold">
+                      Score hits exactly 100:
+                    </span>{" "}
+                    Score resets to 0
                   </div>
                 </li>
               </ol>
             </div>
             <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-4">
               <p className="text-gray-800">
-                <span className="font-bold text-yellow-700">⚠️ Special rule:</span> If a
-                player rolls doubles, they MUST roll again.
+                <span className="font-bold text-yellow-700">
+                  ⚠️ Special rule:
+                </span>{" "}
+                If a bot rolls doubles, they MUST roll again. (`should-roll`
+                will not be called)
               </p>
             </div>
           </section>
@@ -90,22 +97,23 @@ export const Rules: React.FC = () => {
               <li className="flex items-start">
                 <span className="text-green-500 mr-2">•</span>
                 <span>
-                  Once a player reaches a score greater than 100 and decides to hold,
-                  each other player gets one final turn to try to overtake them
+                  Once a bot reaches a score greater than 100 and decides to
+                  hold, each other bot gets one final turn to try to overtake
+                  them
                 </span>
               </li>
               <li className="flex items-start">
                 <span className="text-green-500 mr-2">•</span>
                 <span>
-                  If a player surplants the leader, all players get another turn to try
-                  to overtake the new leader
+                  If a bot surplants the leader, all bots get another turn to
+                  try to overtake the new leader
                 </span>
               </li>
               <li className="flex items-start">
                 <span className="text-green-500 mr-2">•</span>
                 <span>
-                  Game ends when play returns to the player with highest score over 100
-                  without any other player having exceeded that score
+                  Game ends when play returns to the bot with highest score over
+                  100 without any other bot having exceeded that score
                 </span>
               </li>
             </ul>
@@ -120,31 +128,38 @@ export const Rules: React.FC = () => {
             </p>
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 space-y-2">
               <p className="text-gray-800">
-                <span className="font-semibold">Standard payout:</span> $1 per point
-                behind the winner
+                <span className="font-semibold">Standard payout:</span> $1 per
+                point behind the winner
               </p>
               <p className="text-gray-800">
-                <span className="font-semibold">Zero score penalty:</span> Players with
-                score of 0 pay double
+                <span className="font-semibold">Zero score penalty:</span> Bots
+                with score of 0 pay double
               </p>
               <p className="text-gray-600 text-sm mt-3 italic">
-                Example: If the winner has 105 points and you have 85 points, you pay
-                $20. If you have 0 points, you pay $210 (105 × 2).
+                Example: If the winner has 105 points and you have 85 points,
+                you pay $20. If you have 0 points, you pay $210 (105 × 2).
               </p>
             </div>
           </section>
 
           <section className="bg-gradient-to-r from-purple-100 to-indigo-100 rounded-lg p-6">
-            <h3 className="font-bold text-gray-900 mb-4">
-              💡 Strategy Tips
-            </h3>
+            <h3 className="font-bold text-gray-900 mb-4">💡 Strategy Tips</h3>
             <ul className="space-y-2 text-gray-700">
-              <li>• Consider the risk/reward of rolling vs holding at different scores</li>
-              <li>• Adapt your strategy based on opponents' scores</li>
+              <li>
+                • Consider the risk/reward of rolling vs holding at different
+                scores
+              </li>
+              <li>• Adapt your strategy based on other bots' scores</li>
               <li>• Remember the mandatory roll rule when you get doubles</li>
-              <li>• Avoid hitting exactly 100 - plan your approach carefully</li>
-              <li>• In the endgame, calculate if it's worth risking for the lead</li>
-              <li>• Track how many doubles you've rolled to avoid three in a row</li>
+              <li>
+                • Avoid hitting exactly 100 - plan your approach carefully
+              </li>
+              <li>
+                • In the endgame, calculate if it's worth risking for the lead
+              </li>
+              <li>
+                • Track how many doubles you've rolled to avoid three in a row
+              </li>
             </ul>
           </section>
         </div>
