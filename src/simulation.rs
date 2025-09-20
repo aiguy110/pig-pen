@@ -218,7 +218,7 @@ fn run_simulation_sync(
         for i in 0..num_players {
             total_stats[i].0 += results[i].0;
             total_stats[i].1 += results[i].1;
-            total_usage_stats[i].0 += usage[i].0; // fuel
+            total_usage_stats[i].0 = usage[i].0; // fuel
             total_usage_stats[i].1 = std::cmp::max(total_usage_stats[i].1, usage[i].1);
             // memory
         }

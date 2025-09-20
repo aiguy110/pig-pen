@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use rand::seq::SliceRandom;
 use rand::Rng;
-use std::fs;
+use std::{fs, u64};
 use wasmtime::component::*;
-use wasmtime::{Config, Engine, Store};
+use wasmtime::{Config, Engine, ResourceLimiter, Store};
 
 // Generate bindings for the WIT world
 wasmtime::component::bindgen!({
@@ -22,6 +22,54 @@ pub struct PlayerState {
     pub doubles_count: u32,
 }
 
+#[derive(Debug, Default)]
+pub struct MemoryTracker {
+    pub current_memory_bytes: u64,
+    pub peak_memory_bytes: u64,
+    pub memory_limit: Option<u64>,
+}
+
+impl ResourceLimiter for MemoryTracker {
+    fn memory_growing(
+        &mut self,
+        _current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> Result<bool> {
+        let desired_bytes = desired as u64;
+
+        self.current_memory_bytes = desired_bytes;
+        if desired_bytes > self.peak_memory_bytes {
+            self.peak_memory_bytes = desired_bytes;
+        }
+
+        // Check against our limit if set
+        if let Some(limit) = self.memory_limit {
+            if desired_bytes > limit {
+                return Ok(false);
+            }
+        }
+
+        // Check against maximum if provided
+        if let Some(max) = maximum {
+            if desired > max {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+
+    fn table_growing(
+        &mut self,
+        _current: u32,
+        _desired: u32,
+        _maximum: Option<u32>,
+    ) -> Result<bool> {
+        Ok(true)
+    }
+}
+
 // Type alias for dice roll
 pub type DiceRoll = (u32, u32);
 
@@ -34,15 +82,23 @@ fn roll_dice() -> DiceRoll {
 }
 
 pub struct WasmStrategy {
-    store: Store<()>,
+    store: Store<MemoryTracker>,
     player: Player,
     fuel_consumed: u64,
 }
 
 impl WasmStrategy {
     pub fn new(engine: &Engine, wasm_bytes: &[u8]) -> Result<Self> {
-        let mut store = Store::new(&engine, ());
-        store.set_fuel(1_000_000_000)?;
+        let memory_tracker = MemoryTracker {
+            current_memory_bytes: 0,
+            peak_memory_bytes: 0,
+            // memory_limit: Some(100 * 1024 * 1024), // 100MB limit per strategy
+            memory_limit: None,
+        };
+
+        let mut store = Store::new(&engine, memory_tracker);
+        store.limiter(|tracker| tracker);
+        store.set_fuel(u64::MAX)?;
 
         let component = Component::from_binary(&engine, &wasm_bytes)
             .context("Failed to compile WASM component")?;
@@ -77,14 +133,20 @@ impl WasmStrategy {
         let consumed = fuel_before - fuel_after;
         self.fuel_consumed += consumed;
 
+        // Memory tracking is now automatic via ResourceLimiter
+
         // Replenish fuel for the next call
-        self.store.set_fuel(fuel_after + consumed)?;
+        self.store.set_fuel(u64::MAX)?;
 
         result.context("Failed to call should_roll function")
     }
 
     pub fn fuel_consumed(&self) -> u64 {
         self.fuel_consumed
+    }
+
+    pub fn peak_memory_bytes(&self) -> u64 {
+        self.store.data().peak_memory_bytes
     }
 }
 
@@ -177,6 +239,7 @@ pub fn simulate_turn(
 pub fn simulate_game(
     strategies: &mut Vec<WasmStrategy>,
 ) -> Result<(Vec<(u32, i64)>, Vec<(u64, u64)>)> {
+    // Initial player states
     let num_players = strategies.len();
     let mut players: Vec<PlayerState> = vec![
         PlayerState {
@@ -274,7 +337,7 @@ pub fn simulate_game(
 
     let mut usage_stats: Vec<(u64, u64)> = Vec::with_capacity(num_players);
     for strategy in strategies {
-        usage_stats.push((strategy.fuel_consumed(), 1024 * 1024)); // Placeholder for memory
+        usage_stats.push((strategy.fuel_consumed(), strategy.peak_memory_bytes()));
     }
 
     Ok((results, usage_stats))
