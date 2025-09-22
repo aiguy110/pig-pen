@@ -84,7 +84,6 @@ fn roll_dice() -> DiceRoll {
 pub struct WasmStrategy {
     store: Store<MemoryTracker>,
     player: Player,
-    fuel_consumed: u64,
 }
 
 impl WasmStrategy {
@@ -98,7 +97,6 @@ impl WasmStrategy {
 
         let mut store = Store::new(&engine, memory_tracker);
         store.limiter(|tracker| tracker);
-        store.set_fuel(u64::MAX)?;
 
         let component = Component::from_binary(&engine, &wasm_bytes)
             .context("Failed to compile WASM component")?;
@@ -108,11 +106,7 @@ impl WasmStrategy {
         let (player, _) = Player::instantiate(&mut store, &component, &linker)
             .context("Failed to instantiate WASM component")?;
 
-        Ok(WasmStrategy {
-            store,
-            player,
-            fuel_consumed: 0,
-        })
+        Ok(WasmStrategy { store, player })
     }
 
     pub fn from_file(engine: &Engine, wasm_path: &str) -> Result<Self> {
@@ -122,27 +116,14 @@ impl WasmStrategy {
     }
 
     fn should_roll(&mut self, state: GameState) -> Result<bool> {
-        let fuel_before = self.store.get_fuel()?;
-
         let result = self
             .player
             .pig_pen_player_strategy()
             .call_should_roll(&mut self.store, &state);
 
-        let fuel_after = self.store.get_fuel()?;
-        let consumed = fuel_before - fuel_after;
-        self.fuel_consumed += consumed;
-
         // Memory tracking is now automatic via ResourceLimiter
 
-        // Replenish fuel for the next call
-        self.store.set_fuel(u64::MAX)?;
-
         result.context("Failed to call should_roll function")
-    }
-
-    pub fn fuel_consumed(&self) -> u64 {
-        self.fuel_consumed
     }
 
     pub fn peak_memory_bytes(&self) -> u64 {
@@ -236,9 +217,7 @@ pub fn simulate_turn(
     Ok(player_state.score)
 }
 
-pub fn simulate_game(
-    strategies: &mut Vec<WasmStrategy>,
-) -> Result<(Vec<(u32, i64)>, Vec<(u64, u64)>)> {
+pub fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<(Vec<(u32, i64)>, Vec<u64>)> {
     // Initial player states
     let num_players = strategies.len();
     let mut players: Vec<PlayerState> = vec![
@@ -335,9 +314,9 @@ pub fn simulate_game(
         }
     }
 
-    let mut usage_stats: Vec<(u64, u64)> = Vec::with_capacity(num_players);
+    let mut usage_stats: Vec<u64> = Vec::with_capacity(num_players);
     for strategy in strategies {
-        usage_stats.push((strategy.fuel_consumed(), strategy.peak_memory_bytes()));
+        usage_stats.push(strategy.peak_memory_bytes());
     }
 
     Ok((results, usage_stats))
@@ -346,6 +325,5 @@ pub fn simulate_game(
 pub fn create_engine() -> Result<Engine> {
     let mut config = Config::new();
     config.wasm_component_model(true);
-    config.consume_fuel(true);
     Ok(Engine::new(&config)?)
 }

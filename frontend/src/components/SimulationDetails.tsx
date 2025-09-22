@@ -224,9 +224,6 @@ export const SimulationDetails: React.FC = () => {
                         Avg Money/Game
                       </th>
                       <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">
-                        Avg Fuel/Game
-                      </th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">
                         Peak Memory
                       </th>
                     </tr>
@@ -289,12 +286,6 @@ export const SimulationDetails: React.FC = () => {
                                 2,
                               )}
                             </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-700">
-                            {result.avg_fuel_per_game?.toLocaleString(
-                              undefined,
-                              { maximumFractionDigits: 0 },
-                            )}
                           </td>
                           <td className="px-4 py-3 text-right text-gray-700">
                             {result.peak_memory_bytes
