@@ -28,6 +28,7 @@ pub struct StoreData {
     pub current_memory_bytes: u64,
     pub peak_memory_bytes: u64,
     pub memory_limit: Option<u64>,
+    pub memory_limit_hit: bool,
     pub wasi_ctx: WasiCtx,
     pub resource_table: ResourceTable,
 }
@@ -58,6 +59,7 @@ impl ResourceLimiter for StoreData {
         // Check against our limit if set
         if let Some(limit) = self.memory_limit {
             if desired_bytes > limit {
+                self.memory_limit_hit = true;
                 return Ok(false);
             }
         }
@@ -104,6 +106,7 @@ impl WasmStrategy {
             current_memory_bytes: 0,
             peak_memory_bytes: 0,
             memory_limit: Some(100 * 1024 * 1024), // 100MB limit per strategy
+            memory_limit_hit: false,
             wasi_ctx: WasiCtxBuilder::new().build(),
             resource_table: ResourceTable::new(),
         };
@@ -123,6 +126,10 @@ impl WasmStrategy {
         Ok(WasmStrategy { store, player })
     }
 
+    pub fn set_memory_limit(&mut self, limit_bytes: u64) {
+        self.store.data_mut().memory_limit = Some(limit_bytes);
+    }
+
     pub fn from_file(engine: &Engine, wasm_path: &str) -> Result<Self> {
         let wasm_bytes = fs::read(wasm_path)
             .with_context(|| format!("Failed to read WASM file: {}", wasm_path))?;
@@ -130,14 +137,43 @@ impl WasmStrategy {
     }
 
     fn should_roll(&mut self, state: GameState) -> Result<bool> {
+        // Check if memory limit was already hit
+        if self.store.data().memory_limit_hit {
+            return Ok(false); // Force hold if memory limit exceeded
+        }
+
         let result = self
             .player
             .pig_pen_player_strategy()
             .call_should_roll(&mut self.store, &state);
 
-        // Memory tracking is now automatic via ResourceLimiter
+        // Check if the call failed due to memory limit or other WASM errors
+        match result {
+            Ok(decision) => Ok(decision),
+            Err(e) => {
+                // Check if memory limit was hit during the call
+                if self.store.data().memory_limit_hit {
+                    Ok(false) // Force hold if memory limit exceeded
+                } else {
+                    // Check if this looks like a resource/memory error
+                    let error_msg = e.to_string().to_lowercase();
+                    if error_msg.contains("memory") ||
+                       error_msg.contains("resource") ||
+                       error_msg.contains("out of") ||
+                       error_msg.contains("limit") {
+                        // Treat as memory limit exceeded
+                        self.store.data_mut().memory_limit_hit = true;
+                        Ok(false)
+                    } else {
+                        Err(e).context("Failed to call should_roll function")
+                    }
+                }
+            }
+        }
+    }
 
-        result.context("Failed to call should_roll function")
+    pub fn is_memory_limit_exceeded(&self) -> bool {
+        self.store.data().memory_limit_hit
     }
 
     pub fn peak_memory_bytes(&self) -> u64 {
@@ -151,7 +187,7 @@ pub fn simulate_turn(
     player_index: usize,
     strategy: &mut WasmStrategy,
     turn_history: &mut Vec<TurnHistoryEntry>,
-) -> Result<u32> {
+) -> Result<(u32, bool)> { // Return (score, memory_limit_exceeded)
     player_state.turn_start_score = player_state.score;
     player_state.doubles_count = 0;
     let mut must_roll = true;
@@ -168,10 +204,19 @@ pub fn simulate_turn(
             // turn_history: vec![(0u32, (0u32, 0u32)); 1_000_000],
         };
 
-        if !must_roll && !strategy.should_roll(game_state)? {
-            // Player decides to hold, bank the turn points
-            player_state.banked_score = player_state.score;
-            break;
+        if !must_roll {
+            let should_roll = strategy.should_roll(game_state)?;
+
+            // Check if memory limit was exceeded during the decision
+            if strategy.is_memory_limit_exceeded() {
+                return Ok((player_state.score, true)); // Return with memory limit flag
+            }
+
+            if !should_roll {
+                // Player decides to hold, bank the turn points
+                player_state.banked_score = player_state.score;
+                break;
+            }
         }
 
         let roll = roll_dice();
@@ -229,10 +274,12 @@ pub fn simulate_turn(
         }
     }
 
-    Ok(player_state.score)
+    Ok((player_state.score, false)) // No memory limit exceeded
 }
 
-pub fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<(Vec<(u32, i64)>, Vec<u64>)> {
+pub fn simulate_game(
+    strategies: &mut Vec<WasmStrategy>,
+) -> Result<(Vec<(u32, i64)>, Vec<u64>, Vec<bool>)> {
     // Initial player states
     let num_players = strategies.len();
     let mut players: Vec<PlayerState> = vec![
@@ -244,6 +291,9 @@ pub fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<(Vec<(u32, i6
         };
         num_players
     ];
+
+    // Track disqualified players
+    let mut disqualified: Vec<bool> = vec![false; num_players];
 
     // Track complete turn history for the game
     let mut turn_history: Vec<TurnHistoryEntry> = Vec::new();
@@ -261,15 +311,60 @@ pub fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<(Vec<(u32, i6
 
     loop {
         let current_player = player_order[current_player_index];
+
+        // Skip disqualified players
+        if disqualified[current_player] {
+            current_player_index = (current_player_index + 1) % num_players;
+            continue;
+        }
+
+        // Check for memory limit before turn
+        if strategies[current_player].is_memory_limit_exceeded() {
+            disqualified[current_player] = true;
+            // Skip to next player
+            current_player_index = (current_player_index + 1) % num_players;
+
+            // Check if only one player remains
+            let active_players: Vec<usize> =
+                (0..num_players).filter(|&i| !disqualified[i]).collect();
+            if active_players.len() <= 1 {
+                // Early exit - declare remaining player as winner
+                if let Some(&winner_idx) = active_players.first() {
+                    leader_index = winner_idx;
+                    leader_score = players[winner_idx].score;
+                }
+                break;
+            }
+            continue;
+        }
+
         let all_banked_scores: Vec<u32> = players.iter().map(|p| p.banked_score).collect();
 
-        simulate_turn(
+        let (_, memory_exceeded) = simulate_turn(
             &mut players[current_player],
             &all_banked_scores,
             current_player,
             &mut strategies[current_player],
             &mut turn_history,
         )?;
+
+        // Check if memory limit was exceeded during the turn
+        if memory_exceeded || strategies[current_player].is_memory_limit_exceeded() {
+            disqualified[current_player] = true;
+            // Check if only one player remains
+            let active_players: Vec<usize> =
+                (0..num_players).filter(|&i| !disqualified[i]).collect();
+            if active_players.len() <= 1 {
+                // Early exit - declare remaining player as winner
+                if let Some(&winner_idx) = active_players.first() {
+                    leader_index = winner_idx;
+                    leader_score = players[winner_idx].score;
+                }
+                break;
+            }
+            current_player_index = (current_player_index + 1) % num_players;
+            continue;
+        }
 
         if !endgame_started && players[current_player].score > 100 {
             endgame_started = true;
@@ -288,9 +383,11 @@ pub fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<(Vec<(u32, i6
                 players_had_final_turn[current_player] = true;
             }
 
-            // Check if all players have had their turn to catch the current leader
-            let all_had_turn = players_had_final_turn.iter().all(|&had_turn| had_turn);
-            if all_had_turn {
+            // Check if all active players have had their turn to catch the current leader
+            let all_active_had_turn = (0..num_players)
+                .filter(|&i| !disqualified[i])
+                .all(|i| players_had_final_turn[i]);
+            if all_active_had_turn {
                 // Game ends when everyone has had a chance to catch the current leader
                 break;
             }
@@ -299,16 +396,44 @@ pub fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<(Vec<(u32, i6
         current_player_index = (current_player_index + 1) % num_players;
     }
 
-    let winner_index = leader_index;
+    // Find winner among non-disqualified players
+    let active_players: Vec<usize> = (0..num_players).filter(|&i| !disqualified[i]).collect();
+    let winner_index = if active_players.is_empty() {
+        // All players disqualified - no winner
+        0 // fallback, shouldn't happen
+    } else if active_players.len() == 1 {
+        // Only one player left
+        active_players[0]
+    } else {
+        // Find highest scoring non-disqualified player
+        active_players
+            .iter()
+            .map(|&i| (i, players[i].score))
+            .max_by_key(|(_, score)| *score)
+            .map(|(i, _)| i)
+            .unwrap_or(leader_index)
+    };
+
     let winner_score = players[winner_index].score;
 
     let mut results = vec![(0u32, 0i64); num_players];
-    results[winner_index].0 = 1;
 
+    // Only award win to non-disqualified winner
+    if !disqualified[winner_index] {
+        results[winner_index].0 = 1;
+    }
+
+    // Calculate money transfers only between non-disqualified players
     for i in 0..num_players {
+        if disqualified[i] {
+            // Disqualified players get no money
+            results[i].1 = 0;
+            continue;
+        }
+
         if i == winner_index {
             for j in 0..num_players {
-                if j != i {
+                if j != i && !disqualified[j] {
                     let diff = winner_score - players[j].score;
                     let payment = if players[j].score == 0 {
                         (diff * 2) as i64
@@ -334,7 +459,7 @@ pub fn simulate_game(strategies: &mut Vec<WasmStrategy>) -> Result<(Vec<(u32, i6
         usage_stats.push(strategy.peak_memory_bytes());
     }
 
-    Ok((results, usage_stats))
+    Ok((results, usage_stats, disqualified))
 }
 
 pub fn create_engine() -> Result<Engine> {

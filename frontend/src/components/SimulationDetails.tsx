@@ -165,12 +165,29 @@ export const SimulationDetails: React.FC = () => {
         </div>
 
         <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-gray-50 rounded-lg p-4">
               <p className="text-sm text-gray-600 mb-1">Games</p>
               <p className="text-2xl font-bold text-gray-800">
                 {simulation.num_games.toLocaleString()}
               </p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-sm text-gray-600 mb-1">Memory Limit</p>
+              <p className="text-lg font-medium text-gray-800">
+                {simulation.memory_limit_mb
+                  ? `${simulation.memory_limit_mb}MB total`
+                  : "N/A"}
+              </p>
+              {simulation.memory_limit_mb && results?.results.length && (
+                <p className="text-xs text-gray-500 mt-1">
+                  ~
+                  {Math.round(
+                    simulation.memory_limit_mb / results.results.length,
+                  )}
+                  MB per bot
+                </p>
+              )}
             </div>
             <div className="bg-gray-50 rounded-lg p-4">
               <p className="text-sm text-gray-600 mb-1">Created</p>
@@ -229,71 +246,108 @@ export const SimulationDetails: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {results.results
-                      .sort((a, b) => b.total_money - a.total_money)
-                      .map((result, index) => (
-                        <tr
-                          key={result.bot_id}
-                          className={
-                            index === 0 ? "bg-yellow-50" : "hover:bg-gray-50"
-                          }
-                        >
-                          <td className="px-4 py-3">
-                            <div className="flex items-center">
-                              <span className="font-medium text-gray-800">
-                                #{index + 1}{" "}
-                              </span>
-                              {index === 0 && (
-                                <TrophyIcon className="h-5 w-5 text-yellow-500 mr-2" />
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-medium text-gray-800">
-                            {result.bot_name}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-700">
-                            {result.games_won.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-700">
-                            {(
-                              (result.games_won / simulation.num_games) *
-                              100
-                            ).toFixed(1)}
-                            %
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span
+                    {(() => {
+                      // Find the winner among non-disqualified bots
+                      const eligibleResults = results.results.filter(
+                        (r) => !r.disqualified,
+                      );
+                      const winnerMoney =
+                        eligibleResults.length > 0
+                          ? Math.max(
+                              ...eligibleResults.map((r) => r.total_money),
+                            )
+                          : 0;
+
+                      return results.results
+                        .sort((a, b) => {
+                          // Sort disqualified bots to the bottom
+                          if (a.disqualified && !b.disqualified) return 1;
+                          if (!a.disqualified && b.disqualified) return -1;
+                          // For bots with same qualification status, sort by total money
+                          return b.total_money - a.total_money;
+                        })
+                        .map((result, index) => {
+                          const isWinner =
+                            !result.disqualified &&
+                            result.total_money === winnerMoney;
+
+                          return (
+                            <tr
+                              key={result.bot_id}
                               className={
-                                result.total_money >= 0
-                                  ? "text-green-600"
-                                  : "text-red-600"
+                                isWinner ? "bg-yellow-50" : "hover:bg-gray-50"
                               }
                             >
-                              {result.total_money > 0 ? "+" : "- "}$
-                              {Math.abs(result.total_money).toLocaleString()}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span
-                              className={
-                                result.average_money_per_game >= 0
-                                  ? "text-green-600"
-                                  : "text-red-600"
-                              }
-                            >
-                              {result.average_money_per_game >= 0 ? "+" : "-"}$
-                              {Math.abs(result.average_money_per_game).toFixed(
-                                2,
-                              )}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-700">
-                            {result.peak_memory_bytes
-                              ? `${(result.peak_memory_bytes / 1024).toFixed(2)} KB`
-                              : ""}
-                          </td>
-                        </tr>
-                      ))}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center">
+                                  <span className="font-medium text-gray-800">
+                                    #{index + 1}{" "}
+                                  </span>
+                                  {isWinner && (
+                                    <TrophyIcon className="h-5 w-5 text-yellow-500 mr-2" />
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 font-medium text-gray-800">
+                                <div className="flex items-center flex-wrap gap-2">
+                                  {result.bot_name}
+                                  {result.disqualified && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                      Disqualified (mem limit exceeded)
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-right text-gray-700">
+                                {result.games_won.toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 text-right text-gray-700">
+                                {(
+                                  (result.games_won / simulation.num_games) *
+                                  100
+                                ).toFixed(1)}
+                                %
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span
+                                  className={
+                                    result.total_money >= 0
+                                      ? "text-green-600"
+                                      : "text-red-600"
+                                  }
+                                >
+                                  {result.total_money > 0 ? "+" : "- "}$
+                                  {Math.abs(
+                                    result.total_money,
+                                  ).toLocaleString()}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span
+                                  className={
+                                    result.average_money_per_game >= 0
+                                      ? "text-green-600"
+                                      : "text-red-600"
+                                  }
+                                >
+                                  {result.average_money_per_game >= 0
+                                    ? "+"
+                                    : "-"}
+                                  $
+                                  {Math.abs(
+                                    result.average_money_per_game,
+                                  ).toFixed(2)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-gray-700">
+                                {result.peak_memory_bytes
+                                  ? `${(result.peak_memory_bytes / 1024).toFixed(2)} KB`
+                                  : ""}
+                              </td>
+                            </tr>
+                          );
+                        });
+                    })()}
                   </tbody>
                 </table>
               </div>

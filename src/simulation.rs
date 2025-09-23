@@ -115,7 +115,7 @@ async fn run_simulation(task: SimulationTask, pool: SqlitePool, engine: Arc<Engi
     .await?;
 
     match simulation_result {
-        Ok((results, usage_stats, bot_ids)) => {
+        Ok((results, usage_stats, disqualified, bot_ids)) => {
             println!(
                 "[SIMULATION {}] Simulation completed successfully",
                 bot_ids.0
@@ -126,9 +126,10 @@ async fn run_simulation(task: SimulationTask, pool: SqlitePool, engine: Arc<Engi
                 let win_rate = (*games_won as f64 / num_games as f64) * 100.0;
                 let avg_money = *total_money as f64 / num_games as f64;
                 let peak_memory = usage_stats[index];
+                let is_disqualified = disqualified[index];
 
                 println!(
-                    "[SIMULATION {}] Bot {} (index {}): {} wins ({:.1}%), ${} total (${:.2} avg/game), {} bytes peak memory",
+                    "[SIMULATION {}] Bot {} (index {}): {} wins ({:.1}%), ${} total (${:.2} avg/game), {} bytes peak memory{}",
                     bot_ids.0,
                     bot_ids.1[index],
                     index,
@@ -136,17 +137,19 @@ async fn run_simulation(task: SimulationTask, pool: SqlitePool, engine: Arc<Engi
                     win_rate,
                     total_money,
                     avg_money,
-                    peak_memory
+                    peak_memory,
+                    if is_disqualified { " [DISQUALIFIED]" } else { "" }
                 );
 
                 sqlx::query(
                     "UPDATE simulation_participants
-                     SET games_won = ?, total_money = ?, peak_memory_bytes = ?
+                     SET games_won = ?, total_money = ?, peak_memory_bytes = ?, disqualified = ?
                      WHERE simulation_id = ? AND bot_id = ? AND player_index = ?",
                 )
                 .bind(*games_won as i32)
                 .bind(*total_money)
                 .bind(peak_memory as i64)
+                .bind(is_disqualified)
                 .bind(&bot_ids.0)
                 .bind(&bot_ids.1[index])
                 .bind(index as i32)
@@ -190,30 +193,51 @@ fn run_simulation_sync(
     engine: Arc<Engine>,
     pool: SqlitePool,
     simulation_id: String,
-) -> Result<(Vec<(u32, i64)>, Vec<u64>, (String, Vec<String>))> {
+) -> Result<(Vec<(u32, i64)>, Vec<u64>, Vec<bool>, (String, Vec<String>))> {
     let mut strategies = Vec::new();
     let mut bot_ids = Vec::new();
 
+    // Calculate memory limit: 200MB / number of bots
+    let memory_limit_mb = 200_u64;
+    let memory_limit_per_bot = (memory_limit_mb * 1024 * 1024) / task.bots.len() as u64;
+
     for bot in &task.bots {
         let wasm_bytes = std::fs::read(&bot.file_path)?;
-        strategies.push(game::WasmStrategy::new(&engine, &wasm_bytes)?);
+        let mut strategy = game::WasmStrategy::new(&engine, &wasm_bytes)?;
+        strategy.set_memory_limit(memory_limit_per_bot);
+        strategies.push(strategy);
         bot_ids.push(bot.id.clone());
     }
 
     let num_players = strategies.len();
     let mut total_stats = vec![(0u32, 0i64); num_players];
     let mut total_usage_stats: Vec<u64> = vec![0; num_players]; // peak_memory
+    let mut permanently_disqualified = vec![false; num_players]; // Track permanently disqualified bots
 
     // Update progress every 1% of games or every 5000 games, whichever is larger
     let update_interval = std::cmp::max(5000, std::cmp::max(1, task.num_games / 100)) as u32;
 
     for game_num in 0..task.num_games {
-        let (results, usage) = game::simulate_game(&mut strategies)?;
+        // Skip running simulation if all but one bot is disqualified
+        let active_count = permanently_disqualified.iter().filter(|&&x| !x).count();
+        if active_count <= 1 {
+            println!("Early termination: only {} active bot(s) remaining", active_count);
+            break;
+        }
+
+        let (results, usage, disqualified) = game::simulate_game(&mut strategies)?;
         for i in 0..num_players {
             total_stats[i].0 += results[i].0;
             total_stats[i].1 += results[i].1;
             total_usage_stats[i] = std::cmp::max(total_usage_stats[i], usage[i]);
-            // peak memory
+
+            // If a bot was disqualified in this game, mark it as permanently disqualified
+            if disqualified[i] {
+                if !permanently_disqualified[i] {
+                    println!("Bot {} (index {}) permanently disqualified due to memory limit", task.bots[i].name, i);
+                    permanently_disqualified[i] = true;
+                }
+            }
         }
 
         // Update progress periodically using blocking database call
@@ -237,6 +261,7 @@ fn run_simulation_sync(
     Ok((
         total_stats,
         total_usage_stats,
+        permanently_disqualified,
         (task.simulation_id, bot_ids),
     ))
 }

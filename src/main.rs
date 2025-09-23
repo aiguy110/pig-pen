@@ -162,7 +162,7 @@ async fn run_cli_mode(strategy_files: Vec<PathBuf>, num_games: usize) -> Result<
             std::io::stdout().flush().unwrap();
         }
 
-        let (results, _) = game::simulate_game(&mut strategies)?;
+        let (results, _, _) = game::simulate_game(&mut strategies)?;
         for i in 0..num_players {
             total_stats[i].0 += results[i].0;
             total_stats[i].1 += results[i].1;

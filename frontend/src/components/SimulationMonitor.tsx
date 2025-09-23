@@ -220,38 +220,66 @@ export const SimulationMonitor: React.FC<SimulationMonitorProps> = ({
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {results.results
-                  .sort((a, b) => b.total_money - a.total_money)
-                  .map((result, index) => (
-                    <tr
-                      key={result.bot_id}
-                      className={index === 0 ? "bg-yellow-50" : ""}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {result.bot_name}
-                        {index === 0 && (
-                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                            Winner
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {result.games_won.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {((result.games_won / results.num_games) * 100).toFixed(
-                          1,
-                        )}
-                        %
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${result.total_money.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${result.average_money_per_game.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
+                {(() => {
+                  // Find the winner among non-disqualified bots
+                  const eligibleResults = results.results.filter(
+                    (r) => !r.disqualified,
+                  );
+                  const winnerMoney =
+                    eligibleResults.length > 0
+                      ? Math.max(...eligibleResults.map((r) => r.total_money))
+                      : 0;
+
+                  return results.results
+                    .sort((a, b) => {
+                      // Sort disqualified bots to the bottom
+                      if (a.disqualified && !b.disqualified) return 1;
+                      if (!a.disqualified && b.disqualified) return -1;
+                      // For bots with same qualification status, sort by total money
+                      return b.total_money - a.total_money;
+                    })
+                    .map((result, index) => {
+                      const isWinner =
+                        !result.disqualified &&
+                        result.total_money === winnerMoney;
+
+                      return (
+                        <tr
+                          key={result.bot_id}
+                          className={isWinner ? "bg-yellow-50" : ""}
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {result.bot_name}
+                            {result.disqualified ? (
+                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                Disqualified (mem limit exceeded)
+                              </span>
+                            ) : isWinner ? (
+                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                Winner
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {result.games_won.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {(
+                              (result.games_won / results.num_games) *
+                              100
+                            ).toFixed(1)}
+                            %
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            ${result.total_money.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            ${result.average_money_per_game.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    });
+                })()}
               </tbody>
             </table>
           </div>

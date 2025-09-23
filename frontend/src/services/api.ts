@@ -16,6 +16,7 @@ export interface Simulation {
   status: "pending" | "running" | "completed" | "failed";
   num_games: number;
   games_completed: number;
+  memory_limit_mb?: number;
   created_at: string;
   started_at?: string;
   completed_at?: string;
@@ -30,6 +31,7 @@ export interface SimulationResult {
   total_money: number;
   average_money_per_game: number;
   peak_memory_bytes: number | null;
+  disqualified?: boolean;
 }
 
 export interface SimulationHistoryItem {

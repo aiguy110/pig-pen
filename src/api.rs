@@ -55,6 +55,7 @@ struct SimulationStatusResponse {
     status: String,
     num_games: u32,
     games_completed: u32,
+    memory_limit_mb: Option<u32>,
     created_at: String,
     started_at: Option<String>,
     completed_at: Option<String>,
@@ -79,6 +80,7 @@ struct ParticipantResult {
     total_money: i64,
     average_money_per_game: f64,
     peak_memory_bytes: Option<i64>,
+    disqualified: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -255,14 +257,18 @@ async fn start_simulation(
 
     let simulation_id = Uuid::new_v4().to_string();
 
-    // Create simulation record
-    sqlx::query("INSERT INTO simulations (id, status, num_games) VALUES (?, ?, ?)")
-        .bind(&simulation_id)
-        .bind("pending")
-        .bind(request.num_games)
-        .execute(&state.pool)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Create simulation record with memory limit
+    let memory_limit_mb = 200u32;
+    sqlx::query(
+        "INSERT INTO simulations (id, status, num_games, memory_limit_mb) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&simulation_id)
+    .bind("pending")
+    .bind(request.num_games)
+    .bind(memory_limit_mb)
+    .execute(&state.pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Create participant records
     for (index, bot) in bots.iter().enumerate() {
@@ -372,6 +378,7 @@ async fn get_simulation_status(
         status: simulation.status,
         num_games: simulation.num_games,
         games_completed: simulation.games_completed,
+        memory_limit_mb: simulation.memory_limit_mb,
         created_at: simulation.created_at,
         started_at: simulation.started_at,
         completed_at: simulation.completed_at,
@@ -415,6 +422,7 @@ async fn get_simulation_results(
             total_money: participant.total_money,
             average_money_per_game: participant.total_money as f64 / simulation.num_games as f64,
             peak_memory_bytes: participant.peak_memory_bytes,
+            disqualified: participant.disqualified,
         });
     }
 

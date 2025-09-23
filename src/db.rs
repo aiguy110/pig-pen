@@ -18,6 +18,7 @@ pub struct Simulation {
     pub status: String,
     pub num_games: u32,
     pub games_completed: u32,
+    pub memory_limit_mb: Option<u32>,
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -33,6 +34,7 @@ pub struct SimulationParticipant {
     pub total_money: i64,
     pub peak_memory_bytes: Option<i64>,
     pub avg_memory_bytes: Option<i64>,
+    pub disqualified: Option<bool>,
 }
 
 pub async fn create_pool() -> Result<SqlitePool> {
@@ -64,6 +66,7 @@ pub async fn create_pool() -> Result<SqlitePool> {
             status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')),
             num_games INTEGER NOT NULL,
             games_completed INTEGER DEFAULT 0,
+            memory_limit_mb INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             started_at DATETIME,
             completed_at DATETIME,
@@ -74,8 +77,11 @@ pub async fn create_pool() -> Result<SqlitePool> {
     .execute(&pool)
     .await?;
 
-    // Add games_completed column if it doesn't exist (migration for existing databases)
+    // Add columns if they don't exist (migration for existing databases)
     let _ = sqlx::query("ALTER TABLE simulations ADD COLUMN games_completed INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE simulations ADD COLUMN memory_limit_mb INTEGER")
         .execute(&pool)
         .await;
 
@@ -89,6 +95,7 @@ pub async fn create_pool() -> Result<SqlitePool> {
             total_money INTEGER DEFAULT 0,
             peak_memory_bytes INTEGER,
             avg_memory_bytes INTEGER,
+            disqualified BOOLEAN DEFAULT FALSE,
             PRIMARY KEY (simulation_id, bot_id, player_index),
             FOREIGN KEY (simulation_id) REFERENCES simulations(id),
             FOREIGN KEY (bot_id) REFERENCES bots(id)
@@ -105,6 +112,11 @@ pub async fn create_pool() -> Result<SqlitePool> {
     let _ = sqlx::query("ALTER TABLE simulation_participants ADD COLUMN avg_memory_bytes INTEGER")
         .execute(&pool)
         .await;
+    let _ = sqlx::query(
+        "ALTER TABLE simulation_participants ADD COLUMN disqualified BOOLEAN DEFAULT FALSE",
+    )
+    .execute(&pool)
+    .await;
 
     Ok(pool)
 }
