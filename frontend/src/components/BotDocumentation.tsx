@@ -77,7 +77,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-wit-bindgen = "0.16"
+wit-bindgen = "0.46"
 
 [lib]
 crate-type = ["cdylib"]
@@ -91,7 +91,6 @@ package = "pig-pen:player"
 // src/lib.rs
 wit_bindgen::generate!({
     world: "player",
-    path: "./wit"
 });
 
 struct MyStrategy;

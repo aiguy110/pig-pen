@@ -4,6 +4,7 @@ use rand::Rng;
 use std::{fs, u64};
 use wasmtime::component::*;
 use wasmtime::{Config, Engine, ResourceLimiter, Store};
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 // Generate bindings for the WIT world
 wasmtime::component::bindgen!({
@@ -22,14 +23,25 @@ pub struct PlayerState {
     pub doubles_count: u32,
 }
 
-#[derive(Debug, Default)]
-pub struct MemoryTracker {
+#[derive(Default)]
+pub struct StoreData {
     pub current_memory_bytes: u64,
     pub peak_memory_bytes: u64,
     pub memory_limit: Option<u64>,
+    pub wasi_ctx: WasiCtx,
+    pub resource_table: ResourceTable,
 }
 
-impl ResourceLimiter for MemoryTracker {
+impl WasiView for StoreData {
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi_ctx,
+            table: &mut self.resource_table,
+        }
+    }
+}
+
+impl ResourceLimiter for StoreData {
     fn memory_growing(
         &mut self,
         _current: usize,
@@ -62,9 +74,9 @@ impl ResourceLimiter for MemoryTracker {
 
     fn table_growing(
         &mut self,
-        _current: u32,
-        _desired: u32,
-        _maximum: Option<u32>,
+        _current: usize,
+        _desired: usize,
+        _maximum: Option<usize>,
     ) -> Result<bool> {
         Ok(true)
     }
@@ -82,28 +94,30 @@ fn roll_dice() -> DiceRoll {
 }
 
 pub struct WasmStrategy {
-    store: Store<MemoryTracker>,
+    store: Store<StoreData>,
     player: Player,
 }
 
 impl WasmStrategy {
     pub fn new(engine: &Engine, wasm_bytes: &[u8]) -> Result<Self> {
-        let memory_tracker = MemoryTracker {
+        let store_data = StoreData {
             current_memory_bytes: 0,
             peak_memory_bytes: 0,
-            // memory_limit: Some(100 * 1024 * 1024), // 100MB limit per strategy
-            memory_limit: None,
+            memory_limit: Some(100 * 1024 * 1024), // 100MB limit per strategy
+            wasi_ctx: WasiCtxBuilder::new().build(),
+            resource_table: ResourceTable::new(),
         };
 
-        let mut store = Store::new(&engine, memory_tracker);
+        let mut store = Store::new(&engine, store_data);
         store.limiter(|tracker| tracker);
 
         let component = Component::from_binary(&engine, &wasm_bytes)
             .context("Failed to compile WASM component")?;
 
-        let linker = Linker::new(&engine);
+        let mut linker = Linker::new(&engine);
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
 
-        let (player, _) = Player::instantiate(&mut store, &component, &linker)
+        let player = Player::instantiate(&mut store, &component, &linker)
             .context("Failed to instantiate WASM component")?;
 
         Ok(WasmStrategy { store, player })
@@ -151,6 +165,7 @@ pub fn simulate_turn(
             current_total_score: player_state.score,
             all_players_banked_scores: all_banked_scores.clone(),
             turn_history: turn_history.clone(),
+            // turn_history: vec![(0u32, (0u32, 0u32)); 1_000_000],
         };
 
         if !must_roll && !strategy.should_roll(game_state)? {
